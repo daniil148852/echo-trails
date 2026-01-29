@@ -1,0 +1,56 @@
+{
+    "$schema": "https://raw.githubusercontent.com/geode-sdk/geode/main/loader/resources/mod.json",
+    "geode": "3.0.0",
+    "gd": {
+        "android": "2.206",
+        "win": "2.206",
+        "mac": "2.206",
+        "ios": "2.206"
+    },
+    "id": "developer.echo-trails",
+    "name": "Echo Trails",
+    "version": "v1.0.0",
+    "developer": "YourName",
+    "description": "Призрачные следы за игроком, которые повторяют его траекторию с небольшой задержкой. Создаёт красивый эффект эха!",
+    "repository": "https://github.com/yourname/echo-trails",
+    "tags": ["gameplay", "enhancement", "interface"],
+    
+    "settings": {
+        "enabled": {
+            "type": "bool",
+            "default": true,
+            "name": "Включить эффект",
+            "description": "Включить или выключить призрачные следы"
+        },
+        "ghost-count": {
+            "type": "int",
+            "default": 5,
+            "min": 1,
+            "max": 15,
+            "name": "Количество призраков",
+            "description": "Сколько призрачных копий следует за игроком"
+        },
+        "frame-delay": {
+            "type": "int",
+            "default": 4,
+            "min": 1,
+            "max": 20,
+            "name": "Задержка (кадры)",
+            "description": "Расстояние между призраками в кадрах"
+        },
+        "base-opacity": {
+            "type": "int",
+            "default": 180,
+            "min": 30,
+            "max": 255,
+            "name": "Базовая прозрачность",
+            "description": "Прозрачность первого призрака (0-255)"
+        },
+        "use-rainbow": {
+            "type": "bool",
+            "default": false,
+            "name": "Радужный режим",
+            "description": "Призраки будут переливаться разными цветами"
+        }
+    }
+}
