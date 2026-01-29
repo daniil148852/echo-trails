@@ -1,32 +1,31 @@
+# CMakeLists.txt
+# Стандартный шаблон Geode — просто замени project имя на echo-trails
+# Работает в Termux (geode build -p android64) и GitHub Actions
 cmake_minimum_required(VERSION 3.21)
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "iOS" OR IOS)
+    set(CMAKE_OSX_ARCHITECTURES "arm64")
+else()
+    set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
+endif()
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
-# Название проекта
-project(echo-trails VERSION 1.0.0)
+project(echo-trails VERSION 1.0.0 LANGUAGES CXX)
 
-# Добавляем исходные файлы
-add_library(${PROJECT_NAME} SHARED
-    src/main.cpp
-    # Добавьте дополнительные .cpp файлы здесь при необходимости
-)
+# Add all source files inside src (recursively) — твой main.cpp здесь
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
 
-# Проверка наличия Geode SDK
+# Set up the mod binary
+add_library(${PROJECT_NAME} SHARED ${SOURCES})
+
 if (NOT DEFINED ENV{GEODE_SDK})
     message(FATAL_ERROR "Unable to find Geode SDK! Please define GEODE_SDK environment variable to point to Geode")
 else()
     message(STATUS "Found Geode: $ENV{GEODE_SDK}")
 endif()
 
-# Подключаем Geode SDK
 add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)
 
-# Настройка мода (без лишних зависимостей — проект легковесный)
+# Set up dependencies, resources, and link Geode. ✅
 setup_geode_mod(${PROJECT_NAME})
-
-# Опционально: флаги оптимизации для релизной сборки
-if (CMAKE_BUILD_TYPE STREQUAL "Release")
-    target_compile_options(${PROJECT_NAME} PRIVATE -O2)
-endif()
