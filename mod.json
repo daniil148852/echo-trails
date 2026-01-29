@@ -2,7 +2,7 @@
     "$schema": "https://raw.githubusercontent.com/geode-sdk/geode/main/loader/resources/mod.json",
     "geode": "3.0.0",
     "gd": {
-        "android": "2.206",
+        "android": "2.2074",
         "win": "2.206",
         "mac": "2.206",
         "ios": "2.206"
