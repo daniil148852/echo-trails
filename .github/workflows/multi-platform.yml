@@ -1,13 +1,13 @@
-# .github/workflows/build.yml
-# Полная мультиплатформенная сборка (включая android64 для твоего телефона)
-# Автоматически соберёт .geode при push/release на GitHub
 name: Build Echo Trails Mod
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:   # ← Можно запускать вручную из GitHub
   push:
     branches:
-      - "**"
+      - main
+      - master
+  release:
+    types: [published]
 
 jobs:
   build:
@@ -15,52 +15,90 @@ jobs:
       fail-fast: false
       matrix:
         config:
-        - name: Windows
-          os: windows-latest
+          - name: Windows
+            os: windows-latest
+            target: Windows
 
-        - name: macOS
-          os: macos-latest
+          - name: macOS
+            os: macos-latest
+            target: macOS
 
-        - name: iOS
-          os: macos-latest
-          target: iOS
+          - name: iOS
+            os: macos-latest
+            target: iOS
 
-        - name: Android32
-          os: ubuntu-latest
-          target: Android32
+          - name: Android32
+            os: ubuntu-latest
+            target: Android32
 
-        - name: Android64  # ← Твой Android64 здесь!
-          os: ubuntu-latest
-          target: Android64
+          - name: Android64
+            os: ubuntu-latest
+            target: Android64
 
-    name: ${{ matrix.config.name }}
+    name: Build ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ← Вот твой добавленный шаг для фикса local changes в SDK
+      - name: Reset Geode SDK if local changes
+        if: runner.os == 'Linux'  # Обычно проблема возникает на ubuntu-latest (Android)
+        run: |
+          if [ -d "geode-sdk-clone" ]; then
+            cd geode-sdk-clone
+            git fetch origin
+            git reset --hard HEAD
+            git clean -fd
+            git pull origin HEAD || true
+            echo "Geode SDK reset and updated"
+          else
+            echo "geode-sdk-clone not found, skipping reset"
+          fi
 
       - name: Build the mod
         uses: geode-sdk/build-geode-mod@main
+        id: build
         with:
-          combine: true
-          target: ${{ matrix.config.target }}
+          combine: true          # Объединяет все платформы в один .geode (рекомендуется)
+          target: ${{ matrix.config.target }}  # Для каждой платформы
 
   package:
-    name: Package builds
+    name: Package & Upload Artifacts
     runs-on: ubuntu-latest
-    needs: ['build']
+    needs: build   # Ждём завершения всех билдов
 
     steps:
-      - uses: geode-sdk/build-geode-mod/combine@main
-        id: build
+      - name: Checkout repository (for combine step)
+        uses: actions/checkout@v4
 
-      - uses: actions/upload-artifact@v4
+      # Если combine: true в build, то artifacts уже готовы
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
         with:
-          name: echo-trails-builds  # Скачай все .geode здесь!
-          path: ${{ steps.build.outputs.build-output }}
+          pattern: mod-build-*   # Или имя из твоего action (если отличается)
+          path: builds/
+          merge-multiple: true
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      - name: Combine builds (if not already combined)
+        uses: geode-sdk/build-geode-mod/combine@main
+        id: combine
+        with:
+          input-directory: builds/
+
+      - name: Upload combined .geode artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: echo-trails-geode
+          path: ${{ steps.combine.outputs.build-output || 'builds/*.geode' }}
+          if-no-files-found: warn
+
+      # Автоматический релиз при теге (например, git tag v1.0.0 && git push --tags)
+      - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.build.outputs.build-output }}<grok:render card_id="81ffd7" card_type="citation_card" type="render_inline_citation"><argument name="citation_id">16</argument></grok:render>
+          files: ${{ steps.combine.outputs.build-output || 'builds/*.geode' }}
+          generate_release_notes: true
+          draft: false
