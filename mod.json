@@ -1,56 +1,76 @@
+// mod.json
+// Полные настройки + твои слайдеры/тумблеры
+// CLI (geode new) заполнит geode/gd автоматически, но для репо — вот готовый
 {
-    "$schema": "https://raw.githubusercontent.com/geode-sdk/geode/main/loader/resources/mod.json",
-    "geode": "3.0.0",
-    "gd": {
-        "android": "2.2074",
-        "win": "2.206",
-        "mac": "2.206",
-        "ios": "2.206"
-    },
-    "id": "developer.echo-trails",
-    "name": "Echo Trails",
-    "version": "v1.0.0",
-    "developer": "YourName",
-    "description": "Призрачные следы за игроком, которые повторяют его траекторию с небольшой задержкой. Создаёт красивый эффект эха!",
-    "repository": "https://github.com/yourname/echo-trails",
-    "tags": ["gameplay", "enhancement", "interface"],
-    
-    "settings": {
-        "enabled": {
-            "type": "bool",
-            "default": true,
-            "name": "Включить эффект",
-            "description": "Включить или выключить призрачные следы"
-        },
-        "ghost-count": {
-            "type": "int",
-            "default": 5,
-            "min": 1,
-            "max": 15,
-            "name": "Количество призраков",
-            "description": "Сколько призрачных копий следует за игроком"
-        },
-        "frame-delay": {
-            "type": "int",
-            "default": 4,
-            "min": 1,
-            "max": 20,
-            "name": "Задержка (кадры)",
-            "description": "Расстояние между призраками в кадрах"
-        },
-        "base-opacity": {
-            "type": "int",
-            "default": 180,
-            "min": 30,
-            "max": 255,
-            "name": "Базовая прозрачность",
-            "description": "Прозрачность первого призрака (0-255)"
-        },
-        "use-rainbow": {
-            "type": "bool",
-            "default": false,
-            "name": "Радужный режим",
-            "description": "Призраки будут переливаться разными цветами"
-        }
-    }
-}
+	"geode": "^3.6.0",
+	"gd": {
+		"android": "3.00",
+		"win": "2.207",
+		"ios": "2.207",
+		"mac": "2.207"
+	},
+	"_id": "daniiil.echo-trails",
+	"name": "Echo Trails",
+	"version": "1.0.0",
+	"developer": "Даниил",
+	"description": "Призрачные полупрозрачные следы за игроком с задержкой. Поддержка радуги!",
+	"settings": [
+		{
+			"name": "enabled",
+			"type": "bool",
+			"default": true,
+			"desc": "Включить эффект Echo Trails"
+		},
+		{
+			"name": "ghost-count",
+			"type": "int",
+			"default": 5,
+			"min": 1,
+			"max": 20,
+			"name": "Количество призраков",
+			"desc": "Сколько копий игрока показывать (1-20)",
+			"controls": {
+				"slider": true,
+				"arrows": true,
+				"arrow-step": 1,
+				"slider-step": 1
+			}
+		},
+		{
+			"name": "frame-delay",
+			"type": "int",
+			"default": 4,
+			"min": 1,
+			"max": 10,
+			"name": "Задержка кадров",
+			"desc": "Задержка между следами в кадрах (1-10)",
+			"controls": {
+				"slider": true,
+				"arrows": true,
+				"arrow-step": 1,
+				"slider-step": 1
+			}
+		},
+		{
+			"name": "base-opacity",
+			"type": "int",
+			"default": 180,
+			"min": 50,
+			"max": 255,
+			"name": "Базовая прозрачность",
+			"desc": "Прозрачность ближайшего следа (50-255)",
+			"controls": {
+				"slider": true,
+				"arrows": true,
+				"arrow-step": 5,
+				"slider-step": 1
+			}
+		},
+		{
+			"name": "use-rainbow",
+			"type": "bool",
+			"default": false,
+			"desc": "Радужные цвета вместо цвета игрока"
+		}
+	]
+}<grok:render card_id="e30239" card_type="citation_card" type="render_inline_citation"><argument name="citation_id">18</argument></grok:render><grok:render card_id="0c6b3d" card_type="citation_card" type="render_inline_citation"><argument name="citation_id">19</argument></grok:render><grok:render card_id="f9547f" card_type="citation_card" type="render_inline_citation"><argument name="citation_id">14</argument></grok:render>
