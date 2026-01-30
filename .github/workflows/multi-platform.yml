@@ -25,7 +25,6 @@ jobs:
           - name: Android32
             os: ubuntu-latest
             target: Android32
-          # iOS убран, т.к. требует дополнительной настройки
 
     name: ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }}
@@ -36,7 +35,7 @@ jobs:
       - name: Build the mod
         uses: geode-sdk/build-geode-mod@main
         with:
-          sdk: nightly
+          sdk: latest                           # <-- ИЗМЕНЕНО с nightly на latest
           combine: true
           target: ${{ matrix.config.target }}
 
@@ -44,6 +43,7 @@ jobs:
     name: Combine and Deploy
     runs-on: ubuntu-latest
     needs: ['build']
+
     steps:
       - name: Combine builds
         uses: geode-sdk/build-geode-mod/combine@main
@@ -64,7 +64,7 @@ jobs:
         with:
           file_path: "mod.json"
 
-      - name: "Update Nightly Release"
+      - name: Update Nightly Release
         uses: ncipollo/release-action@v1
         with:
           name: "Development Release"
@@ -76,7 +76,7 @@ jobs:
           artifacts: ${{ steps.build.outputs.build-output }}/*.geode
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: "Create Versioned Release"
+      - name: Create Versioned Release
         if: github.ref == 'refs/heads/main'
         uses: ncipollo/release-action@v1
         with:
