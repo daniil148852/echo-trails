@@ -4,115 +4,56 @@
         "win": "2.2074",
         "android": "2.2074"
     },
-    "id": "developer.ghost-trail-ultimate",
-    "name": "Ghost Trail Ultimate",
+    "id": "developer.echo-trails",
+    "name": "Echo Trails",
     "version": "v1.0.0",
     "developer": "Developer",
-    "description": "🔥 Ultimate ghost trail effect with 10 stunning visual modes: Rainbow, Neon, Fire, Ice, Galaxy, Chromatic aberration, Glitch, Pulse, and more! Fully customizable with advanced animation settings.",
+    "description": "👻 Race against your ghost! Records your best run and displays a phantom replay of yourself to compete against. Features smooth interpolation, time difference indicator, and customizable visuals.",
     "repository": "",
-    "tags": ["enhancement", "gameplay", "customization", "interface"],
+    "tags": ["gameplay", "enhancement", "online"],
     "settings": {
         "enabled": {
             "type": "bool",
             "default": true,
-            "name": "✨ Enable Ghost Trail",
-            "description": "Master toggle for the ghost trail effect."
+            "name": "✨ Enable Echo Trails",
+            "description": "Master toggle for ghost recording and playback."
         },
-        "trail-mode": {
+        "record-fps": {
             "type": "int",
-            "default": 0,
-            "name": "🎨 Trail Mode",
-            "description": "0=Classic, 1=Rainbow, 2=Neon, 3=Glitch, 4=Fire, 5=Ice, 6=Galaxy, 7=Chromatic, 8=Pulse, 9=Ghost",
-            "min": 0,
-            "max": 9
+            "default": 60,
+            "name": "📹 Recording FPS",
+            "description": "Frames per second for ghost recording. Higher = smoother playback, larger files.",
+            "min": 15,
+            "max": 240
         },
-        "spawn-rate": {
-            "type": "int",
-            "default": 25,
-            "name": "⚡ Spawn Rate",
-            "description": "Ghost sprites per second. Higher = smoother trail, more GPU usage.",
-            "min": 5,
-            "max": 60
-        },
-        "opacity": {
-            "type": "int",
-            "default": 180,
+        "ghost-opacity": {
+            "type": "float",
+            "default": 0.5,
             "name": "👻 Ghost Opacity",
-            "description": "Initial opacity of ghost sprites (0-255).",
-            "min": 30,
-            "max": 255
-        },
-        "fade-duration": {
-            "type": "float",
-            "default": 0.4,
-            "name": "⏱️ Fade Duration",
-            "description": "How long ghosts take to fade out (seconds).",
+            "description": "Transparency of the ghost player (0.0 - 1.0).",
             "min": 0.1,
-            "max": 2.0
+            "max": 1.0
         },
-        "scale-end": {
-            "type": "float",
-            "default": 0.7,
-            "name": "📐 End Scale",
-            "description": "Final scale multiplier when ghost fades (1.0 = same size, 0.5 = half).",
-            "min": 0.1,
-            "max": 2.0
+        "ghost-color": {
+            "type": "string",
+            "default": "blue",
+            "name": "🎨 Ghost Color",
+            "description": "Color of the ghost sprite. Options: blue, red, green, purple, yellow, cyan, white"
         },
-        "rotation-speed": {
-            "type": "float",
-            "default": 0.0,
-            "name": "🔄 Rotation Speed",
-            "description": "How much ghosts rotate while fading (degrees per second).",
-            "min": -720.0,
-            "max": 720.0
-        },
-        "rainbow-speed": {
-            "type": "float",
-            "default": 2.0,
-            "name": "🌈 Rainbow Speed",
-            "description": "Speed of rainbow color cycling (for Rainbow/Neon modes).",
-            "min": 0.5,
-            "max": 10.0
-        },
-        "glitch-intensity": {
-            "type": "float",
-            "default": 1.0,
-            "name": "📺 Glitch Intensity",
-            "description": "Intensity of position glitch effect (for Glitch mode).",
-            "min": 0.1,
-            "max": 3.0
-        },
-        "trail-length": {
-            "type": "int",
-            "default": 10,
-            "name": "📏 Trail Length",
-            "description": "Visual length of the trail (affects fade timing).",
-            "min": 3,
-            "max": 30
-        },
-        "only-moving": {
-            "type": "bool",
-            "default": false,
-            "name": "🏃 Only When Moving",
-            "description": "Only spawn ghosts when the player is actually moving."
-        },
-        "additive-blend": {
+        "show-time-diff": {
             "type": "bool",
             "default": true,
-            "name": "💡 Additive Blending",
-            "description": "Use additive blend mode for glowing effect."
+            "name": "⏱️ Show Time Difference",
+            "description": "Display position difference indicator above ghost."
         },
-        "dual-color": {
+        "glow-effect": {
             "type": "bool",
             "default": true,
-            "name": "🎭 Use Player Color",
-            "description": "Use player's icon color (Classic mode only)."
-        },
-        "mirror-mode": {
-            "type": "bool",
-            "default": false,
-            "name": "🪞 Mirror Mode",
-            "description": "Create mirrored ghost trail for trippy symmetry effect."
+            "name": "✨ Glow Effect",
+            "description": "Add glowing aura around the ghost for better visibility."
         }
+    },
+    "resources": {
+        "spritesheets": {}
     }
 }
