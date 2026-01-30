@@ -1,71 +1,85 @@
 {
     "geode": "4.10.2",
     "gd": {
-        "android": "2.207",
-        "win": "2.207",
-        "ios": "2.207",
-        "mac": "2.207"
+        "android": "2.2074",
+        "win": "2.2074",
+        "mac": "2.2074"
     },
-    "id": "daniiil.echo-trails",
+    "id": "yourname.echo-trails",
     "name": "Echo Trails",
     "version": "v1.0.0",
-    "developer": "Daniiil",
-    "description": "Призрачные полупрозрачные следы за игроком с задержкой. Поддержка радуги!",
-    "repository": "https://github.com/YOUR_USERNAME/echo-trails",
+    "developer": "YourName",
+    "description": "Stunning ghost trails that follow your player with beautiful fading effects, rainbow colors, and customizable settings!",
+    "tags": ["enhancement", "customization", "interface"],
     "settings": {
         "enabled": {
-            "name": "Включить Echo Trails",
-            "description": "Включить эффект призрачных следов",
+            "name": "Enable Echo Trails",
+            "description": "Toggle the echo trail effect",
             "type": "bool",
             "default": true
         },
-        "ghost-count": {
-            "name": "Количество призраков",
-            "description": "Сколько копий игрока показывать (1-20)",
+        "trail-count": {
+            "name": "Trail Count",
+            "description": "Number of ghost echoes behind the player",
             "type": "int",
-            "default": 5,
-            "min": 1,
-            "max": 20,
-            "control": {
-                "slider": true,
-                "slider-step": 1,
-                "arrows": true,
-                "arrow-step": 1
-            }
+            "default": 8,
+            "min": 3,
+            "max": 20
         },
-        "frame-delay": {
-            "name": "Задержка кадров",
-            "description": "Задержка между следами в кадрах (1-10)",
-            "type": "int",
-            "default": 4,
-            "min": 1,
-            "max": 10,
-            "control": {
-                "slider": true,
-                "slider-step": 1,
-                "arrows": true,
-                "arrow-step": 1
-            }
+        "trail-delay": {
+            "name": "Trail Spacing",
+            "description": "Distance between each echo (lower = tighter trail)",
+            "type": "float",
+            "default": 0.04,
+            "min": 0.01,
+            "max": 0.15
+        },
+        "rainbow-mode": {
+            "name": "Rainbow Mode",
+            "description": "Enable beautiful rainbow-colored trails",
+            "type": "bool",
+            "default": true
+        },
+        "pulse-effect": {
+            "name": "Pulse Effect",
+            "description": "Trails pulse and breathe with life",
+            "type": "bool",
+            "default": true
+        },
+        "trail-style": {
+            "name": "Trail Style",
+            "description": "Visual style of the ghost trails",
+            "type": "string",
+            "default": "smooth",
+            "one-of": ["smooth", "sharp", "ethereal", "neon"]
         },
         "base-opacity": {
-            "name": "Базовая прозрачность",
-            "description": "Прозрачность ближайшего следа (50-255)",
+            "name": "Base Opacity",
+            "description": "Starting opacity of trails (0-255)",
             "type": "int",
             "default": 180,
             "min": 50,
-            "max": 255,
-            "control": {
-                "slider": true,
-                "slider-step": 5,
-                "arrows": true,
-                "arrow-step": 5
-            }
+            "max": 255
         },
-        "use-rainbow": {
-            "name": "Радужные цвета",
-            "description": "Радужные цвета вместо цвета игрока",
+        "glow-intensity": {
+            "name": "Glow Intensity",
+            "description": "Intensity of the glow effect around trails",
+            "type": "float",
+            "default": 1.5,
+            "min": 0.0,
+            "max": 3.0
+        },
+        "death-burst": {
+            "name": "Death Burst Effect",
+            "description": "Spectacular particle burst when you die",
             "type": "bool",
-            "default": false
+            "default": true
+        },
+        "jump-flash": {
+            "name": "Jump Flash",
+            "description": "Brief flash effect when jumping",
+            "type": "bool",
+            "default": true
         }
     }
 }
