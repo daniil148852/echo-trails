@@ -1,353 +1,410 @@
-/**
- * ========================================
- *          ECHO TRAILS MOD
- *     Призрачные следы для Geometry Dash
- * ========================================
- * 
- * Мод создаёт полупрозрачные копии иконки игрока,
- * которые следуют за ним с небольшой задержкой,
- * создавая эффект "эха" или "следа".
- */
-
 #include <Geode/Geode.hpp>
+#include <Geode/modify/PlayerObject.hpp>
 #include <Geode/modify/PlayLayer.hpp>
+#include <Geode/modify/GJBaseGameLayer.hpp>
 #include <deque>
-#include <vector>
+#include <cmath>
 
 using namespace geode::prelude;
 
-// ============================================
-// СТРУКТУРА ДЛЯ ХРАНЕНИЯ СОСТОЯНИЯ ИГРОКА
-// ============================================
+// ============================================================================
+// 🎨 ECHO TRAIL SYSTEM
+// ============================================================================
 
-/**
- * Хранит полную информацию о позиции и трансформации
- * игрока в определённый момент времени
- */
-struct PlayerState {
-    cocos2d::CCPoint position;   // Позиция на уровне
-    float rotation;               // Угол поворота (градусы)
-    float scaleX;                 // Масштаб по X
-    float scaleY;                 // Масштаб по Y
-    bool flipX;                   // Отражение по X
-    bool flipY;                   // Отражение по Y
-    bool visible;                 // Видимость спрайта
-    cocos2d::ccColor3B color;     // Цвет игрока
+struct EchoSnapshot {
+    CCPoint position;
+    float rotation;
+    float scale;
+    double timestamp;
+    bool isShip;
+    bool isBall;
+    bool isUfo;
+    bool isWave;
+    bool isRobot;
+    bool isSpider;
+    bool isSwing;
+    bool flipX;
+    bool flipY;
 };
 
-// ============================================
-// МОДИФИКАЦИЯ PLAYLAYER
-// ============================================
+struct EchoGhost {
+    CCSprite* sprite = nullptr;
+    CCSprite* glowSprite = nullptr;
+    float opacity = 255.0f;
+    ccColor3B color = {255, 255, 255};
+};
+
+class EchoTrailManager {
+private:
+    static EchoTrailManager* s_instance;
+    
+    std::deque<EchoSnapshot> m_snapshots;
+    std::vector<EchoGhost> m_ghosts;
+    CCNode* m_trailContainer = nullptr;
+    double m_lastSnapshotTime = 0.0;
+    float m_pulsePhase = 0.0f;
+    float m_rainbowHue = 0.0f;
+    bool m_initialized = false;
+    
+public:
+    static EchoTrailManager* get() {
+        if (!s_instance) {
+            s_instance = new EchoTrailManager();
+        }
+        return s_instance;
+    }
+    
+    // Convert HSV to RGB for rainbow effect
+    ccColor3B hsvToRgb(float h, float s, float v) {
+        float c = v * s;
+        float x = c * (1 - std::abs(std::fmod(h / 60.0f, 2) - 1));
+        float m = v - c;
+        
+        float r, g, b;
+        if (h < 60) { r = c; g = x; b = 0; }
+        else if (h < 120) { r = x; g = c; b = 0; }
+        else if (h < 180) { r = 0; g = c; b = x; }
+        else if (h < 240) { r = 0; g = x; b = c; }
+        else if (h < 300) { r = x; g = 0; b = c; }
+        else { r = c; g = 0; b = x; }
+        
+        return {
+            static_cast<GLubyte>((r + m) * 255),
+            static_cast<GLubyte>((g + m) * 255),
+            static_cast<GLubyte>((b + m) * 255)
+        };
+    }
+    
+    void initialize(CCLayer* gameLayer) {
+        cleanup();
+        
+        m_trailContainer = CCNode::create();
+        m_trailContainer->setZOrder(-10);
+        gameLayer->addChild(m_trailContainer);
+        
+        int trailCount = Mod::get()->getSettingValue<int64_t>("trail-count");
+        m_ghosts.resize(trailCount);
+        
+        for (int i = 0; i < trailCount; i++) {
+            // Main ghost sprite
+            auto ghost = CCSprite::create("playerSquare_001.png");
+            if (!ghost) {
+                ghost = CCSprite::create("square.png");
+            }
+            if (ghost) {
+                ghost->setVisible(false);
+                ghost->setBlendFunc({GL_SRC_ALPHA, GL_ONE}); // Additive blending for glow
+                m_trailContainer->addChild(ghost, trailCount - i);
+                m_ghosts[i].sprite = ghost;
+                
+                // Glow layer
+                float glowIntensity = Mod::get()->getSettingValue<double>("glow-intensity");
+                if (glowIntensity > 0) {
+                    auto glow = CCSprite::create("playerSquare_001.png");
+                    if (!glow) glow = CCSprite::create("square.png");
+                    if (glow) {
+                        glow->setVisible(false);
+                        glow->setBlendFunc({GL_SRC_ALPHA, GL_ONE});
+                        glow->setScale(1.3f);
+                        glow->setOpacity(100);
+                        m_trailContainer->addChild(glow, trailCount - i - 1);
+                        m_ghosts[i].glowSprite = glow;
+                    }
+                }
+            }
+        }
+        
+        m_initialized = true;
+        m_snapshots.clear();
+        m_lastSnapshotTime = 0.0;
+    }
+    
+    void cleanup() {
+        if (m_trailContainer) {
+            m_trailContainer->removeFromParent();
+            m_trailContainer = nullptr;
+        }
+        m_ghosts.clear();
+        m_snapshots.clear();
+        m_initialized = false;
+    }
+    
+    void captureSnapshot(PlayerObject* player, double currentTime) {
+        if (!m_initialized || !player) return;
+        if (!Mod::get()->getSettingValue<bool>("enabled")) return;
+        
+        float delay = Mod::get()->getSettingValue<double>("trail-delay");
+        if (currentTime - m_lastSnapshotTime < delay) return;
+        
+        EchoSnapshot snapshot;
+        snapshot.position = player->getPosition();
+        snapshot.rotation = player->getRotation();
+        snapshot.scale = player->getScale();
+        snapshot.timestamp = currentTime;
+        snapshot.isShip = player->m_isShip;
+        snapshot.isBall = player->m_isBall;
+        snapshot.isUfo = player->m_isBird;
+        snapshot.isWave = player->m_isDart;
+        snapshot.isRobot = player->m_isRobot;
+        snapshot.isSpider = player->m_isSpider;
+        snapshot.isSwing = player->m_isSwing;
+        snapshot.flipX = player->isFlipX();
+        snapshot.flipY = player->isFlipY();
+        
+        m_snapshots.push_front(snapshot);
+        
+        int maxSnapshots = Mod::get()->getSettingValue<int64_t>("trail-count") + 5;
+        while (m_snapshots.size() > maxSnapshots) {
+            m_snapshots.pop_back();
+        }
+        
+        m_lastSnapshotTime = currentTime;
+    }
+    
+    void updateTrails(float dt) {
+        if (!m_initialized || !Mod::get()->getSettingValue<bool>("enabled")) {
+            for (auto& ghost : m_ghosts) {
+                if (ghost.sprite) ghost.sprite->setVisible(false);
+                if (ghost.glowSprite) ghost.glowSprite->setVisible(false);
+            }
+            return;
+        }
+        
+        int trailCount = m_ghosts.size();
+        bool rainbowMode = Mod::get()->getSettingValue<bool>("rainbow-mode");
+        bool pulseEffect = Mod::get()->getSettingValue<bool>("pulse-effect");
+        int baseOpacity = Mod::get()->getSettingValue<int64_t>("base-opacity");
+        float glowIntensity = Mod::get()->getSettingValue<double>("glow-intensity");
+        std::string style = Mod::get()->getSettingValue<std::string>("trail-style");
+        
+        // Update animation phases
+        m_pulsePhase += dt * 4.0f;
+        m_rainbowHue += dt * 60.0f;
+        if (m_rainbowHue >= 360.0f) m_rainbowHue -= 360.0f;
+        
+        for (int i = 0; i < trailCount; i++) {
+            if (i >= m_snapshots.size()) {
+                if (m_ghosts[i].sprite) m_ghosts[i].sprite->setVisible(false);
+                if (m_ghosts[i].glowSprite) m_ghosts[i].glowSprite->setVisible(false);
+                continue;
+            }
+            
+            auto& snapshot = m_snapshots[i];
+            auto& ghost = m_ghosts[i];
+            
+            if (!ghost.sprite) continue;
+            
+            ghost.sprite->setVisible(true);
+            ghost.sprite->setPosition(snapshot.position);
+            ghost.sprite->setRotation(snapshot.rotation);
+            
+            // Calculate opacity based on position in trail
+            float progress = static_cast<float>(i) / static_cast<float>(trailCount);
+            float opacity = baseOpacity * (1.0f - progress);
+            
+            // Apply style-specific modifications
+            if (style == "sharp") {
+                opacity = (i < trailCount / 2) ? baseOpacity * 0.8f : baseOpacity * 0.2f;
+            } else if (style == "ethereal") {
+                opacity *= 0.6f + 0.4f * std::sin(progress * 3.14159f);
+            } else if (style == "neon") {
+                opacity = baseOpacity * 0.9f;
+            }
+            
+            // Pulse effect
+            if (pulseEffect) {
+                float pulse = 0.8f + 0.2f * std::sin(m_pulsePhase + i * 0.5f);
+                opacity *= pulse;
+                ghost.sprite->setScale(snapshot.scale * (0.95f + 0.1f * pulse));
+            } else {
+                ghost.sprite->setScale(snapshot.scale * (1.0f - progress * 0.3f));
+            }
+            
+            ghost.sprite->setOpacity(static_cast<GLubyte>(std::max(0.0f, std::min(255.0f, opacity))));
+            
+            // Color calculation
+            ccColor3B color;
+            if (rainbowMode) {
+                float hue = std::fmod(m_rainbowHue + i * (360.0f / trailCount), 360.0f);
+                color = hsvToRgb(hue, 0.9f, 1.0f);
+            } else {
+                // Gradient from cyan to purple
+                float t = progress;
+                color = {
+                    static_cast<GLubyte>(100 + 155 * t),
+                    static_cast<GLubyte>(200 * (1 - t) + 100 * t),
+                    static_cast<GLubyte>(255)
+                };
+            }
+            ghost.sprite->setColor(color);
+            
+            // Update glow sprite
+            if (ghost.glowSprite && glowIntensity > 0) {
+                ghost.glowSprite->setVisible(true);
+                ghost.glowSprite->setPosition(snapshot.position);
+                ghost.glowSprite->setRotation(snapshot.rotation);
+                ghost.glowSprite->setScale(ghost.sprite->getScale() * (1.2f + glowIntensity * 0.2f));
+                ghost.glowSprite->setOpacity(static_cast<GLubyte>(opacity * 0.4f * glowIntensity));
+                ghost.glowSprite->setColor(color);
+            }
+        }
+    }
+    
+    void createDeathBurst(CCPoint position, CCLayer* layer) {
+        if (!Mod::get()->getSettingValue<bool>("death-burst")) return;
+        if (!layer) return;
+        
+        // Create spectacular particle burst
+        int particleCount = 24;
+        for (int i = 0; i < particleCount; i++) {
+            auto particle = CCSprite::create("playerSquare_001.png");
+            if (!particle) particle = CCSprite::create("square.png");
+            if (!particle) continue;
+            
+            particle->setPosition(position);
+            particle->setScale(0.3f + (rand() % 100) / 200.0f);
+            particle->setBlendFunc({GL_SRC_ALPHA, GL_ONE});
+            
+            float hue = (360.0f / particleCount) * i;
+            particle->setColor(hsvToRgb(hue, 1.0f, 1.0f));
+            particle->setOpacity(200);
+            particle->setZOrder(100);
+            layer->addChild(particle);
+            
+            // Random direction
+            float angle = (360.0f / particleCount) * i + (rand() % 30 - 15);
+            float radians = angle * 3.14159f / 180.0f;
+            float distance = 80.0f + rand() % 60;
+            
+            CCPoint targetPos = {
+                position.x + std::cos(radians) * distance,
+                position.y + std::sin(radians) * distance
+            };
+            
+            // Animate particle
+            auto move = CCEaseOut::create(CCMoveTo::create(0.6f, targetPos), 2.0f);
+            auto scale = CCScaleTo::create(0.6f, 0.0f);
+            auto fade = CCFadeOut::create(0.6f);
+            auto rotate = CCRotateBy::create(0.6f, 360.0f + rand() % 360);
+            auto spawn = CCSpawn::create(move, scale, fade, rotate, nullptr);
+            auto remove = CCCallFunc::create(particle, callfunc_selector(CCSprite::removeFromParent));
+            particle->runAction(CCSequence::create(spawn, remove, nullptr));
+        }
+        
+        // Screen flash effect
+        auto flash = CCLayerColor::create({255, 255, 255, 100});
+        flash->setZOrder(1000);
+        layer->addChild(flash);
+        flash->runAction(CCSequence::create(
+            CCFadeOut::create(0.3f),
+            CCCallFunc::create(flash, callfunc_selector(CCLayerColor::removeFromParent)),
+            nullptr
+        ));
+    }
+    
+    void createJumpFlash(CCPoint position, CCLayer* layer) {
+        if (!Mod::get()->getSettingValue<bool>("jump-flash")) return;
+        if (!layer) return;
+        
+        // Small flash ring on jump
+        auto ring = CCSprite::create("playerSquare_001.png");
+        if (!ring) ring = CCSprite::create("square.png");
+        if (!ring) return;
+        
+        ring->setPosition(position);
+        ring->setScale(0.5f);
+        ring->setBlendFunc({GL_SRC_ALPHA, GL_ONE});
+        ring->setColor(hsvToRgb(m_rainbowHue, 0.8f, 1.0f));
+        ring->setOpacity(180);
+        ring->setZOrder(50);
+        layer->addChild(ring);
+        
+        auto scale = CCScaleTo::create(0.2f, 1.5f);
+        auto fade = CCFadeOut::create(0.2f);
+        auto spawn = CCSpawn::create(scale, fade, nullptr);
+        auto remove = CCCallFunc::create(ring, callfunc_selector(CCSprite::removeFromParent));
+        ring->runAction(CCSequence::create(spawn, remove, nullptr));
+    }
+    
+    void reset() {
+        m_snapshots.clear();
+        m_lastSnapshotTime = 0.0;
+        for (auto& ghost : m_ghosts) {
+            if (ghost.sprite) ghost.sprite->setVisible(false);
+            if (ghost.glowSprite) ghost.glowSprite->setVisible(false);
+        }
+    }
+};
+
+EchoTrailManager* EchoTrailManager::s_instance = nullptr;
+
+// ============================================================================
+// 🎮 GAME HOOKS
+// ============================================================================
 
 class $modify(EchoPlayLayer, PlayLayer) {
     
-    /**
-     * Структура Fields хранит все данные мода
-     * для каждого экземпляра PlayLayer
-     */
-    struct Fields {
-        // История позиций игрока (очередь)
-        std::deque<PlayerState> positionHistory;
-        
-        // Спрайты призраков
-        std::vector<cocos2d::CCSprite*> ghosts;
-        
-        // Настройки из mod.json
-        int ghostCount = 5;
-        int frameDelay = 4;
-        int baseOpacity = 180;
-        bool useRainbow = false;
-        bool enabled = true;
-        
-        // Флаг инициализации
-        bool initialized = false;
-        
-        // Счётчик кадров для радужного режима
-        float rainbowHue = 0.0f;
-    };
-
-    // ----------------------------------------
-    // ИНИЦИАЛИЗАЦИЯ УРОВНЯ
-    // ----------------------------------------
-    
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
-        // Вызываем оригинальный метод
         if (!PlayLayer::init(level, useReplay, dontCreateObjects)) {
             return false;
         }
         
-        // Загружаем настройки из mod.json
-        loadSettings();
+        EchoTrailManager::get()->initialize(this);
         
-        // Логируем для отладки
-        log::info("Echo Trails: Инициализация уровня '{}'", 
-                  level->m_levelName.c_str());
+        // Schedule update
+        this->schedule(schedule_selector(EchoPlayLayer::echoUpdate));
         
         return true;
     }
-
-    // ----------------------------------------
-    // ЗАГРУЗКА НАСТРОЕК
-    // ----------------------------------------
     
-    void loadSettings() {
-        auto mod = Mod::get();
-        
-        m_fields->enabled = mod->getSettingValue<bool>("enabled");
-        m_fields->ghostCount = static_cast<int>(mod->getSettingValue<int64_t>("ghost-count"));
-        m_fields->frameDelay = static_cast<int>(mod->getSettingValue<int64_t>("frame-delay"));
-        m_fields->baseOpacity = static_cast<int>(mod->getSettingValue<int64_t>("base-opacity"));
-        m_fields->useRainbow = mod->getSettingValue<bool>("use-rainbow");
-        
-        log::debug("Echo Trails: Настройки загружены - {} призраков, задержка {}", 
-                   m_fields->ghostCount, m_fields->frameDelay);
+    void echoUpdate(float dt) {
+        EchoTrailManager::get()->updateTrails(dt);
     }
-
-    // ----------------------------------------
-    // СОЗДАНИЕ ПРИЗРАКОВ
-    // ----------------------------------------
-    
-    void createGhosts() {
-        // Проверяем наличие игрока
-        if (!m_player1) {
-            log::warn("Echo Trails: Игрок не найден!");
-            return;
-        }
-        
-        // Очищаем предыдущих призраков (если были)
-        cleanupGhosts();
-        
-        for (int i = 0; i < m_fields->ghostCount; i++) {
-            // Создаём спрайт призрака
-            // Используем текстуру круга как основу
-            auto ghost = cocos2d::CCSprite::create("square.png");
-            
-            if (!ghost) {
-                // Альтернативная текстура
-                ghost = cocos2d::CCSprite::create("GJ_square01.png");
-            }
-            
-            if (ghost) {
-                // === НАСТРОЙКА ПРОЗРАЧНОСТИ ===
-                // Каждый следующий призрак более прозрачный
-                float opacityFactor = 1.0f - (static_cast<float>(i) / m_fields->ghostCount);
-                GLubyte opacity = static_cast<GLubyte>(m_fields->baseOpacity * opacityFactor);
-                ghost->setOpacity(opacity);
-                
-                // === НАЧАЛЬНОЕ СОСТОЯНИЕ ===
-                ghost->setVisible(false);
-                ghost->setZOrder(-10 - i);  // Позади игрока
-                
-                // === ЦВЕТ ПРИЗРАКА ===
-                // Копируем цвет с игрока
-                ghost->setColor(m_player1->m_playerColor1);
-                
-                // === МАСШТАБ ===
-                // Делаем призраков немного меньше оригинала
-                float scaleFactor = 0.95f - (i * 0.02f);
-                ghost->setScale(m_player1->getScale() * scaleFactor);
-                
-                // Добавляем на слой объектов
-                if (m_objectLayer) {
-                    m_objectLayer->addChild(ghost);
-                } else {
-                    this->addChild(ghost);
-                }
-                
-                m_fields->ghosts.push_back(ghost);
-            }
-        }
-        
-        m_fields->initialized = true;
-        log::info("Echo Trails: Создано {} призраков", m_fields->ghosts.size());
-    }
-
-    // ----------------------------------------
-    // ГЛАВНЫЙ ЦИКЛ ОБНОВЛЕНИЯ
-    // ----------------------------------------
-    
-    void update(float dt) {
-        // Вызываем оригинальный update
-        PlayLayer::update(dt);
-        
-        // Проверяем, включён ли эффект
-        if (!m_fields->enabled) return;
-        
-        // Ленивая инициализация призраков
-        // (создаём только когда игрок точно существует)
-        if (!m_fields->initialized && m_player1) {
-            createGhosts();
-        }
-        
-        // Проверяем готовность
-        if (!m_fields->initialized || !m_player1) return;
-        
-        // === СОХРАНЯЕМ ТЕКУЩЕЕ СОСТОЯНИЕ ИГРОКА ===
-        PlayerState currentState;
-        currentState.position = m_player1->getPosition();
-        currentState.rotation = m_player1->getRotation();
-        currentState.scaleX = m_player1->getScaleX();
-        currentState.scaleY = m_player1->getScaleY();
-        currentState.flipX = m_player1->isFlipX();
-        currentState.flipY = m_player1->isFlipY();
-        currentState.visible = m_player1->isVisible() && !m_player1->m_isDead;
-        currentState.color = m_player1->m_playerColor1;
-        
-        // Добавляем в начало очереди
-        m_fields->positionHistory.push_front(currentState);
-        
-        // === ОГРАНИЧИВАЕМ РАЗМЕР ИСТОРИИ ===
-        // Храним только необходимое количество кадров
-        size_t maxHistorySize = static_cast<size_t>(
-            (m_fields->ghostCount + 1) * m_fields->frameDelay + 1
-        );
-        
-        while (m_fields->positionHistory.size() > maxHistorySize) {
-            m_fields->positionHistory.pop_back();
-        }
-        
-        // === ОБНОВЛЯЕМ ПОЗИЦИИ ПРИЗРАКОВ ===
-        updateGhostPositions(dt);
-    }
-
-    // ----------------------------------------
-    // ОБНОВЛЕНИЕ ПОЗИЦИЙ ПРИЗРАКОВ
-    // ----------------------------------------
-    
-    void updateGhostPositions(float dt) {
-        // Обновляем радужный оттенок
-        if (m_fields->useRainbow) {
-            m_fields->rainbowHue += dt * 60.0f;  // Скорость смены цвета
-            if (m_fields->rainbowHue >= 360.0f) {
-                m_fields->rainbowHue -= 360.0f;
-            }
-        }
-        
-        for (size_t i = 0; i < m_fields->ghosts.size(); i++) {
-            auto ghost = m_fields->ghosts[i];
-            if (!ghost) continue;
-            
-            // Вычисляем индекс в истории для этого призрака
-            // Чем дальше призрак, тем более старую позицию он использует
-            size_t historyIndex = (i + 1) * m_fields->frameDelay;
-            
-            // Проверяем, достаточно ли данных в истории
-            if (historyIndex < m_fields->positionHistory.size()) {
-                const PlayerState& state = m_fields->positionHistory[historyIndex];
-                
-                // === ПРИМЕНЯЕМ ТРАНСФОРМАЦИИ ===
-                ghost->setPosition(state.position);
-                ghost->setRotation(state.rotation);
-                ghost->setScaleX(state.scaleX * (0.95f - i * 0.02f));
-                ghost->setScaleY(state.scaleY * (0.95f - i * 0.02f));
-                ghost->setFlipX(state.flipX);
-                ghost->setFlipY(state.flipY);
-                ghost->setVisible(state.visible);
-                
-                // === ЦВЕТ ===
-                if (m_fields->useRainbow) {
-                    // Радужный режим: каждый призрак имеет свой оттенок
-                    float hue = m_fields->rainbowHue + (i * 30.0f);
-                    ghost->setColor(hsvToRgb(hue, 0.8f, 1.0f));
-                } else {
-                    // Обычный режим: копируем цвет игрока
-                    ghost->setColor(state.color);
-                }
-                
-            } else {
-                // Недостаточно истории — скрываем призрака
-                ghost->setVisible(false);
-            }
-        }
-    }
-
-    // ----------------------------------------
-    // ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: HSV -> RGB
-    // ----------------------------------------
-    
-    cocos2d::ccColor3B hsvToRgb(float h, float s, float v) {
-        // Нормализуем оттенок
-        while (h >= 360.0f) h -= 360.0f;
-        while (h < 0.0f) h += 360.0f;
-        
-        float c = v * s;
-        float x = c * (1.0f - std::abs(fmod(h / 60.0f, 2.0f) - 1.0f));
-        float m = v - c;
-        
-        float r, g, b;
-        
-        if (h < 60.0f)       { r = c; g = x; b = 0; }
-        else if (h < 120.0f) { r = x; g = c; b = 0; }
-        else if (h < 180.0f) { r = 0; g = c; b = x; }
-        else if (h < 240.0f) { r = 0; g = x; b = c; }
-        else if (h < 300.0f) { r = x; g = 0; b = c; }
-        else                 { r = c; g = 0; b = x; }
-        
-        return cocos2d::ccc3(
-            static_cast<GLubyte>((r + m) * 255),
-            static_cast<GLubyte>((g + m) * 255),
-            static_cast<GLubyte>((b + m) * 255)
-        );
-    }
-
-    // ----------------------------------------
-    // ОЧИСТКА ПРИЗРАКОВ
-    // ----------------------------------------
-    
-    void cleanupGhosts() {
-        for (auto ghost : m_fields->ghosts) {
-            if (ghost && ghost->getParent()) {
-                ghost->removeFromParent();
-            }
-        }
-        m_fields->ghosts.clear();
-        m_fields->positionHistory.clear();
-    }
-
-    // ----------------------------------------
-    // СБРОС ПРИ СМЕРТИ/РЕСТАРТЕ
-    // ----------------------------------------
     
     void resetLevel() {
-        // Очищаем историю при рестарте
-        m_fields->positionHistory.clear();
-        
-        // Скрываем всех призраков
-        for (auto ghost : m_fields->ghosts) {
-            if (ghost) {
-                ghost->setVisible(false);
-            }
-        }
-        
-        // Вызываем оригинальный метод
         PlayLayer::resetLevel();
-        
-        log::debug("Echo Trails: Уровень сброшен");
+        EchoTrailManager::get()->reset();
     }
-
-    // ----------------------------------------
-    // ВЫХОД ИЗ УРОВНЯ
-    // ----------------------------------------
     
     void onQuit() {
-        // Полная очистка ресурсов
-        cleanupGhosts();
-        m_fields->initialized = false;
-        
-        log::info("Echo Trails: Выход из уровня, ресурсы очищены");
-        
-        // Вызываем оригинальный метод
+        EchoTrailManager::get()->cleanup();
         PlayLayer::onQuit();
+    }
+    
+    void destroyPlayer(PlayerObject* player, GameObject* obj) {
+        if (player) {
+            EchoTrailManager::get()->createDeathBurst(player->getPosition(), this);
+        }
+        PlayLayer::destroyPlayer(player, obj);
     }
 };
 
-// ============================================
-// ТОЧКА ВХОДА МОДА
-// ============================================
+class $modify(EchoPlayerObject, PlayerObject) {
+    
+    void update(float dt) {
+        PlayerObject::update(dt);
+        
+        auto playLayer = PlayLayer::get();
+        if (playLayer && this == playLayer->m_player1) {
+            double time = playLayer->m_gameState.m_currentProgress;
+            EchoTrailManager::get()->captureSnapshot(this, time);
+        }
+    }
+    
+    void pushButton(PlayerButton btn) {
+        PlayerObject::pushButton(btn);
+        
+        auto playLayer = PlayLayer::get();
+        if (playLayer && this == playLayer->m_player1) {
+            EchoTrailManager::get()->createJumpFlash(this->getPosition(), playLayer);
+        }
+    }
+};
+
+// ============================================================================
+// 🚀 MOD INITIALIZATION  
+// ============================================================================
 
 $on_mod(Loaded) {
-    log::info("=================================");
-    log::info("   Echo Trails Mod v1.0.0");
-    log::info("   Призрачные следы загружены!");
-    log::info("=================================");
+    log::info("✨ Echo Trails loaded! Enjoy the beautiful ghost effects!");
 }
