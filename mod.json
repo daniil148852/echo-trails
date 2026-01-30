@@ -5,81 +5,48 @@
         "win": "2.2074",
         "mac": "2.2074"
     },
-    "id": "yourname.echo-trails",
-    "name": "Echo Trails",
+    "id": "yourname.ghost-replay",
+    "name": "Ghost Replay",
     "version": "v1.0.0",
     "developer": "YourName",
-    "description": "Stunning ghost trails that follow your player with beautiful fading effects, rainbow colors, and customizable settings!",
-    "tags": ["enhancement", "customization", "interface"],
+    "description": "Показывает призрак твоей лучшей попытки во время игры. Соревнуйся сам с собой!",
+    "repository": "https://github.com/yourname/ghost-replay",
     "settings": {
         "enabled": {
-            "name": "Enable Echo Trails",
-            "description": "Toggle the echo trail effect",
+            "name": "Включить Ghost Replay",
+            "description": "Вкл/выкл мод",
             "type": "bool",
             "default": true
         },
-        "trail-count": {
-            "name": "Trail Count",
-            "description": "Number of ghost echoes behind the player",
+        "opacity": {
+            "name": "Прозрачность призрака",
+            "description": "Насколько виден призрак (0-100%)",
             "type": "int",
-            "default": 8,
-            "min": 3,
-            "max": 20
+            "default": 40,
+            "min": 10,
+            "max": 100,
+            "control": {
+                "slider": true
+            }
         },
-        "trail-delay": {
-            "name": "Trail Spacing",
-            "description": "Distance between each echo (lower = tighter trail)",
-            "type": "float",
-            "default": 0.04,
-            "min": 0.01,
-            "max": 0.15
-        },
-        "rainbow-mode": {
-            "name": "Rainbow Mode",
-            "description": "Enable beautiful rainbow-colored trails",
+        "show-only-if-better": {
+            "name": "Скрывать когда впереди",
+            "description": "Прятать призрака если ты его обогнал",
             "type": "bool",
-            "default": true
+            "default": false
         },
-        "pulse-effect": {
-            "name": "Pulse Effect",
-            "description": "Trails pulse and breathe with life",
+        "record-practice": {
+            "name": "Записывать в практике",
+            "description": "Записывать попытки в режиме практики",
             "type": "bool",
-            "default": true
+            "default": false
         },
-        "trail-style": {
-            "name": "Trail Style",
-            "description": "Visual style of the ghost trails",
-            "type": "string",
-            "default": "smooth",
-            "one-of": ["smooth", "sharp", "ethereal", "neon"]
-        },
-        "base-opacity": {
-            "name": "Base Opacity",
-            "description": "Starting opacity of trails (0-255)",
-            "type": "int",
-            "default": 180,
-            "min": 50,
-            "max": 255
-        },
-        "glow-intensity": {
-            "name": "Glow Intensity",
-            "description": "Intensity of the glow effect around trails",
-            "type": "float",
-            "default": 1.5,
-            "min": 0.0,
-            "max": 3.0
-        },
-        "death-burst": {
-            "name": "Death Burst Effect",
-            "description": "Spectacular particle burst when you die",
-            "type": "bool",
-            "default": true
-        },
-        "jump-flash": {
-            "name": "Jump Flash",
-            "description": "Brief flash effect when jumping",
-            "type": "bool",
-            "default": true
+        "ghost-color": {
+            "name": "Цвет призрака",
+            "description": "Цвет отображения призрака",
+            "type": "color",
+            "default": [100, 200, 255]
         }
-    }
+    },
+    "tags": ["gameplay", "enhancement", "interface"]
 }
