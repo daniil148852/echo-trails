@@ -151,7 +151,8 @@ bool GhostRecorder::saveCurrentRecording() {
     return success;
 }
 
-std::filesystem::path GhostRecorder::getRecordingPath(const std::string& levelID) {
+// Теперь const метод
+std::filesystem::path GhostRecorder::getRecordingPath(const std::string& levelID) const {
     return Mod::get()->getSaveDir() / "ghosts" / (levelID + ".ghost");
 }
 
