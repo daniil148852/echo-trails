@@ -1,76 +1,71 @@
-// mod.json
-// Полные настройки + твои слайдеры/тумблеры
-// CLI (geode new) заполнит geode/gd автоматически, но для репо — вот готовый
 {
-	"geode": "^3.6.0",
-	"gd": {
-		"android": "3.00",
-		"win": "2.207",
-		"ios": "2.207",
-		"mac": "2.207"
-	},
-	"_id": "daniiil.echo-trails",
-	"name": "Echo Trails",
-	"version": "1.0.0",
-	"developer": "Даниил",
-	"description": "Призрачные полупрозрачные следы за игроком с задержкой. Поддержка радуги!",
-	"settings": [
-		{
-			"name": "enabled",
-			"type": "bool",
-			"default": true,
-			"desc": "Включить эффект Echo Trails"
-		},
-		{
-			"name": "ghost-count",
-			"type": "int",
-			"default": 5,
-			"min": 1,
-			"max": 20,
-			"name": "Количество призраков",
-			"desc": "Сколько копий игрока показывать (1-20)",
-			"controls": {
-				"slider": true,
-				"arrows": true,
-				"arrow-step": 1,
-				"slider-step": 1
-			}
-		},
-		{
-			"name": "frame-delay",
-			"type": "int",
-			"default": 4,
-			"min": 1,
-			"max": 10,
-			"name": "Задержка кадров",
-			"desc": "Задержка между следами в кадрах (1-10)",
-			"controls": {
-				"slider": true,
-				"arrows": true,
-				"arrow-step": 1,
-				"slider-step": 1
-			}
-		},
-		{
-			"name": "base-opacity",
-			"type": "int",
-			"default": 180,
-			"min": 50,
-			"max": 255,
-			"name": "Базовая прозрачность",
-			"desc": "Прозрачность ближайшего следа (50-255)",
-			"controls": {
-				"slider": true,
-				"arrows": true,
-				"arrow-step": 5,
-				"slider-step": 1
-			}
-		},
-		{
-			"name": "use-rainbow",
-			"type": "bool",
-			"default": false,
-			"desc": "Радужные цвета вместо цвета игрока"
-		}
-	]
-}<grok:render card_id="e30239" card_type="citation_card" type="render_inline_citation"><argument name="citation_id">18</argument></grok:render><grok:render card_id="0c6b3d" card_type="citation_card" type="render_inline_citation"><argument name="citation_id">19</argument></grok:render><grok:render card_id="f9547f" card_type="citation_card" type="render_inline_citation"><argument name="citation_id">14</argument></grok:render>
+    "geode": "4.10.2",
+    "gd": {
+        "android": "2.207",
+        "win": "2.207",
+        "ios": "2.207",
+        "mac": "2.207"
+    },
+    "id": "daniiil.echo-trails",
+    "name": "Echo Trails",
+    "version": "v1.0.0",
+    "developer": "Daniiil",
+    "description": "Призрачные полупрозрачные следы за игроком с задержкой. Поддержка радуги!",
+    "repository": "https://github.com/YOUR_USERNAME/echo-trails",
+    "settings": {
+        "enabled": {
+            "name": "Включить Echo Trails",
+            "description": "Включить эффект призрачных следов",
+            "type": "bool",
+            "default": true
+        },
+        "ghost-count": {
+            "name": "Количество призраков",
+            "description": "Сколько копий игрока показывать (1-20)",
+            "type": "int",
+            "default": 5,
+            "min": 1,
+            "max": 20,
+            "control": {
+                "slider": true,
+                "slider-step": 1,
+                "arrows": true,
+                "arrow-step": 1
+            }
+        },
+        "frame-delay": {
+            "name": "Задержка кадров",
+            "description": "Задержка между следами в кадрах (1-10)",
+            "type": "int",
+            "default": 4,
+            "min": 1,
+            "max": 10,
+            "control": {
+                "slider": true,
+                "slider-step": 1,
+                "arrows": true,
+                "arrow-step": 1
+            }
+        },
+        "base-opacity": {
+            "name": "Базовая прозрачность",
+            "description": "Прозрачность ближайшего следа (50-255)",
+            "type": "int",
+            "default": 180,
+            "min": 50,
+            "max": 255,
+            "control": {
+                "slider": true,
+                "slider-step": 5,
+                "arrows": true,
+                "arrow-step": 5
+            }
+        },
+        "use-rainbow": {
+            "name": "Радужные цвета",
+            "description": "Радужные цвета вместо цвета игрока",
+            "type": "bool",
+            "default": false
+        }
+    }
+}
