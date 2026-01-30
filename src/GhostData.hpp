@@ -1,47 +1,84 @@
 #pragma once
+
 #include <Geode/Geode.hpp>
 #include <vector>
+#include <string>
 
 using namespace geode::prelude;
 
-// Один кадр записи
+namespace EchoTrails {
+
+// Игровые режимы
+enum class GameMode : uint8_t {
+    Cube = 0,
+    Ship = 1,
+    Ball = 2,
+    UFO = 3,
+    Wave = 4,
+    Robot = 5,
+    Spider = 6,
+    Swing = 7
+};
+
+// Данные одного кадра
 struct GhostFrame {
-    float xPos;           // Позиция X
-    float yPos;           // Позиция Y
-    float rotation;       // Поворот иконки
-    int gameMode;         // 0=куб, 1=корабль, 2=шар, 3=UFO, 4=волна, 5=робот, 6=паук
-    bool isUpsideDown;    // Перевёрнут ли
-    bool isMini;          // Мини-режим
-    bool isDashing;       // Дэш (2.2)
-    bool isHolding;       // Зажата ли кнопка
+    float posX;
+    float posY;
+    float rotation;
+    float scaleX;
+    float scaleY;
+    GameMode gameMode;
+    bool isUpsideDown;
+    bool isVisible;
+    bool isDashing;      // Для свинг-копоптера
+    bool isMini;
+    bool isDual;
+    bool isPlayer2;      // Для dual mode
     
-    // Для интерполяции - время кадра
-    float timestamp;
+    // Сериализация
+    void serialize(std::vector<uint8_t>& buffer) const;
+    static GhostFrame deserialize(const uint8_t* data, size_t& offset);
 };
 
-// Полная запись попытки
+// Данные игрока для визуала
+struct PlayerVisuals {
+    int iconID;
+    int shipID;
+    int ballID;
+    int ufoID;
+    int waveID;
+    int robotID;
+    int spiderID;
+    int swingID;
+    int color1;
+    int color2;
+    int glowColor;
+    bool hasGlow;
+};
+
+// Полная запись прохождения
 struct GhostRecording {
-    std::string levelID;           // ID уровня
-    int bestPercent;               // Процент этой попытки
-    float totalTime;               // Длительность записи
+    std::string levelID;
+    std::string levelName;
+    int bestPercent;
+    float totalTime;
+    uint32_t frameCount;
+    float fps;  // Для интерполяции
+    PlayerVisuals visuals;
     std::vector<GhostFrame> frames;
+    std::vector<GhostFrame> player2Frames;  // Для dual mode
     
-    bool isValid() const {
-        return !frames.empty() && !levelID.empty();
-    }
+    // Время записи
+    int64_t timestamp;
     
-    void clear() {
-        frames.clear();
-        bestPercent = 0;
-        totalTime = 0.f;
-    }
+    bool isComplete() const { return bestPercent >= 100; }
+    
+    // Файловые операции
+    bool saveToFile(const std::filesystem::path& path) const;
+    static std::optional<GhostRecording> loadFromFile(const std::filesystem::path& path);
 };
 
-// Настройки мода
-struct GhostSettings {
-    bool enabled = true;
-    float ghostOpacity = 0.4f;      // Прозрачность (0.0 - 1.0)
-    bool showOnlyIfBetter = false;  // Показывать только если призрак впереди
-    bool recordPractice = false;    // Записывать в практике
-    ccColor3B ghostColor = {100, 200, 255}; // Цвет призрака (голубой)
-};
+// Интерполяция между кадрами
+GhostFrame interpolateFrames(const GhostFrame& a, const GhostFrame& b, float t);
+
+} // namespace EchoTrails
