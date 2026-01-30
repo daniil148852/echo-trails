@@ -1,122 +1,158 @@
 #include "GhostRecorder.hpp"
-#include <Geode/Geode.hpp>
+#include <Geode/loader/Mod.hpp>
+#include <chrono>
 
-using namespace geode::prelude;
+namespace EchoTrails {
 
-GhostRecorder* GhostRecorder::s_instance = nullptr;
-
-GhostRecorder* GhostRecorder::get() {
-    if (!s_instance) {
-        s_instance = new GhostRecorder();
-    }
-    return s_instance;
+GhostRecorder& GhostRecorder::get() {
+    static GhostRecorder instance;
+    return instance;
 }
 
-void GhostRecorder::startRecording(int levelID) {
-    m_isRecording = true;
-    m_currentRecording = GhostData();
-    m_currentRecording.levelID = levelID;
-    m_currentRecording.frames.clear();
-    m_lastXPos = 0.0f;
+void GhostRecorder::startRecording(GJGameLevel* level) {
+    reset();
     
-    log::debug("Начата запись для уровня {}", levelID);
+    m_isRecording = true;
+    m_recordingStartTime = 0.0f;
+    
+    m_currentRecording.levelID = std::to_string(level->m_levelID.value());
+    m_currentRecording.levelName = level->m_levelName;
+    m_currentRecording.bestPercent = 0;
+    m_currentRecording.frameCount = 0;
+    m_currentRecording.fps = 60.0f; // Будет обновлено
+    
+    // Получаем визуал игрока
+    auto* gm = GameManager::sharedState();
+    m_currentRecording.visuals = {
+        .iconID = gm->getPlayerFrame(),
+        .shipID = gm->getPlayerShip(),
+        .ballID = gm->getPlayerBall(),
+        .ufoID = gm->getPlayerBird(),
+        .waveID = gm->getPlayerDart(),
+        .robotID = gm->getPlayerRobot(),
+        .spiderID = gm->getPlayerSpider(),
+        .swingID = gm->getPlayerSwing(),
+        .color1 = gm->getPlayerColor(),
+        .color2 = gm->getPlayerColor2(),
+        .glowColor = gm->getPlayerGlowColor(),
+        .hasGlow = gm->getPlayerGlow()
+    };
+    
+    m_currentRecording.timestamp = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()
+    ).count();
+    
+    log::info("EchoTrails: Started recording for level {}", m_currentRecording.levelName);
+}
+
+void GhostRecorder::recordFrame(PlayerObject* player, bool isPlayer2) {
+    if (!m_isRecording || !player) return;
+    
+    GhostFrame frame = capturePlayerState(player, isPlayer2);
+    
+    if (isPlayer2) {
+        m_currentRecording.player2Frames.push_back(frame);
+    } else {
+        m_currentRecording.frames.push_back(frame);
+        m_currentRecording.frameCount = m_currentRecording.frames.size();
+    }
+    
+    m_hasLastFrame = true;
+    m_lastFrame = frame;
+}
+
+GhostFrame GhostRecorder::capturePlayerState(PlayerObject* player, bool isPlayer2) {
+    GhostFrame frame;
+    
+    frame.posX = player->getPositionX();
+    frame.posY = player->getPositionY();
+    frame.rotation = player->getRotation();
+    frame.scaleX = player->getScaleX();
+    frame.scaleY = player->getScaleY();
+    
+    frame.gameMode = getPlayerGameMode(player);
+    frame.isUpsideDown = player->m_isUpsideDown;
+    frame.isVisible = player->isVisible();
+    frame.isDashing = player->m_isDashing;
+    frame.isMini = player->m_vehicleSize != 1.0f;
+    frame.isDual = false; // Будет установлено в PlayLayer
+    frame.isPlayer2 = isPlayer2;
+    
+    return frame;
+}
+
+GameMode GhostRecorder::getPlayerGameMode(PlayerObject* player) {
+    if (player->m_isShip) return GameMode::Ship;
+    if (player->m_isBall) return GameMode::Ball;
+    if (player->m_isBird) return GameMode::UFO;
+    if (player->m_isDart) return GameMode::Wave;
+    if (player->m_isRobot) return GameMode::Robot;
+    if (player->m_isSpider) return GameMode::Spider;
+    if (player->m_isSwing) return GameMode::Swing;
+    return GameMode::Cube;
 }
 
 void GhostRecorder::stopRecording() {
+    if (!m_isRecording) return;
+    
     m_isRecording = false;
-    log::debug("Запись остановлена. Записано {} кадров", m_currentRecording.frames.size());
+    m_currentRecording.bestPercent = m_currentPercent;
+    
+    log::info("EchoTrails: Stopped recording. Frames: {}, Progress: {}%", 
+              m_currentRecording.frameCount, m_currentPercent);
 }
 
-void GhostRecorder::recordFrame(PlayerObject* player, float xPos) {
-    if (!m_isRecording || !player) return;
-    
-    GhostFrame frame;
-    frame.xPos = xPos;
-    frame.yPos = player->getPositionY();
-    frame.rotation = player->getRotation();
-    frame.yScale = player->getScaleY();
-    
-    // Вместо m_isHolding используем другие способы:
-    // Вариант 1: Отслеживаем изменение Y позиции (прыжок = движение вверх)
-    // Вариант 2: Просто не записываем это поле (оно не критично для визуала)
-    frame.isHolding = false; // Убираем, не критично для отображения призрака
-    
-    // Записываем состояния игрока из доступных полей
-    frame.isDashing = player->m_isDashing;
-    frame.isUpsideDown = player->m_isUpsideDown;
-    frame.isShip = player->m_isShip;
-    frame.isBall = player->m_isBall;
-    frame.isUFO = player->m_isBird;  // UFO в коде называется Bird
-    frame.isWave = player->m_isDart; // Wave в коде называется Dart
-    frame.isRobot = player->m_isRobot;
-    frame.isSpider = player->m_isSpider;
-    frame.isSwing = player->m_isSwing;
-    frame.isMini = player->m_vehicleSize != 1.0f; // Мини режим
-    
-    m_currentRecording.frames.push_back(frame);
+void GhostRecorder::reset() {
+    m_currentRecording.frames.clear();
+    m_currentRecording.player2Frames.clear();
+    m_currentRecording.frameCount = 0;
+    m_currentPercent = 0;
+    m_hasLastFrame = false;
+    m_recordingStartTime = 0.0f;
 }
 
-void GhostRecorder::saveGhost(const std::string& filename) {
-    if (m_currentRecording.frames.empty()) {
-        log::warn("Нет данных для сохранения");
-        return;
+bool GhostRecorder::shouldSaveRecording() const {
+    auto recordMode = Mod::get()->getSettingValue<std::string>("record-mode");
+    
+    if (recordMode == "always") {
+        return true;
+    } else if (recordMode == "completion-only") {
+        return m_currentPercent >= 100;
+    } else { // best-progress
+        // Загружаем существующую запись и сравниваем
+        auto existingPath = getRecordingPath(m_currentRecording.levelID);
+        if (std::filesystem::exists(existingPath)) {
+            if (auto existing = GhostRecording::loadFromFile(existingPath)) {
+                return m_currentPercent > existing->bestPercent;
+            }
+        }
+        return m_currentPercent > 0;
     }
-    
-    auto path = Mod::get()->getSaveDir() / (filename + ".ghost");
-    
-    std::ofstream file(path, std::ios::binary);
-    if (!file.is_open()) {
-        log::error("Не удалось открыть файл для записи: {}", path.string());
-        return;
-    }
-    
-    // Записываем заголовок
-    file.write(reinterpret_cast<const char*>(&m_currentRecording.levelID), sizeof(int));
-    
-    size_t frameCount = m_currentRecording.frames.size();
-    file.write(reinterpret_cast<const char*>(&frameCount), sizeof(size_t));
-    
-    // Записываем кадры
-    for (const auto& frame : m_currentRecording.frames) {
-        file.write(reinterpret_cast<const char*>(&frame), sizeof(GhostFrame));
-    }
-    
-    file.close();
-    log::info("Призрак сохранён: {}", path.string());
 }
 
-bool GhostRecorder::loadGhost(const std::string& filename, GhostData& outData) {
-    auto path = Mod::get()->getSaveDir() / (filename + ".ghost");
+bool GhostRecorder::saveCurrentRecording() {
+    if (m_currentRecording.frames.empty()) return false;
     
-    std::ifstream file(path, std::ios::binary);
-    if (!file.is_open()) {
-        log::debug("Файл не найден: {}", path.string());
-        return false;
+    auto path = getRecordingPath(m_currentRecording.levelID);
+    
+    // Создаем директорию если не существует
+    auto dir = path.parent_path();
+    if (!std::filesystem::exists(dir)) {
+        std::filesystem::create_directories(dir);
     }
     
-    // Читаем заголовок
-    file.read(reinterpret_cast<char*>(&outData.levelID), sizeof(int));
-    
-    size_t frameCount;
-    file.read(reinterpret_cast<char*>(&frameCount), sizeof(size_t));
-    
-    // Читаем кадры
-    outData.frames.resize(frameCount);
-    for (size_t i = 0; i < frameCount; i++) {
-        file.read(reinterpret_cast<char*>(&outData.frames[i]), sizeof(GhostFrame));
+    bool success = m_currentRecording.saveToFile(path);
+    if (success) {
+        log::info("EchoTrails: Saved ghost recording to {}", path.string());
+    } else {
+        log::error("EchoTrails: Failed to save ghost recording");
     }
     
-    file.close();
-    log::info("Призрак загружен: {} кадров", frameCount);
-    return true;
+    return success;
 }
 
-bool GhostRecorder::loadBestGhost(int levelID, GhostData& outData) {
-    std::string filename = fmt::format("ghost_{}_best", levelID);
-    return loadGhost(filename, outData);
+std::filesystem::path GhostRecorder::getRecordingPath(const std::string& levelID) {
+    return Mod::get()->getSaveDir() / "ghosts" / (levelID + ".ghost");
 }
 
-void GhostRecorder::saveBestGhost(int levelID) {
-    std::string filename = fmt::format("ghost_{}_best", levelID);
-    saveGhost(filename);
-}
+} // namespace EchoTrails
