@@ -1,52 +1,57 @@
 {
-    "geode": "4.10.2",
+    "geode": "3.4.0",
     "gd": {
-        "android": "2.2074",
-        "win": "2.2074",
-        "mac": "2.2074"
+        "android": "2.2074"
     },
-    "id": "yourname.ghost-replay",
-    "name": "Ghost Replay",
+    "id": "yourname.echo-trails",
+    "name": "Echo Trails",
     "version": "v1.0.0",
     "developer": "YourName",
-    "description": "Показывает призрак твоей лучшей попытки во время игры. Соревнуйся сам с собой!",
-    "repository": "https://github.com/yourname/ghost-replay",
+    "description": "Watch your ghost from the best attempt while playing! Race against yourself.",
+    "repository": "https://github.com/yourname/EchoTrails",
     "settings": {
         "enabled": {
-            "name": "Включить Ghost Replay",
-            "description": "Вкл/выкл мод",
+            "name": "Enable Ghost",
+            "description": "Show ghost replay during gameplay",
             "type": "bool",
             "default": true
         },
-        "opacity": {
-            "name": "Прозрачность призрака",
-            "description": "Насколько виден призрак (0-100%)",
-            "type": "int",
-            "default": 40,
-            "min": 10,
-            "max": 100,
+        "ghost-opacity": {
+            "name": "Ghost Opacity",
+            "description": "Transparency of the ghost player",
+            "type": "float",
+            "default": 0.5,
+            "min": 0.1,
+            "max": 1.0,
             "control": {
-                "slider": true
+                "slider": true,
+                "slider-step": 0.1
             }
         },
-        "show-only-if-better": {
-            "name": "Скрывать когда впереди",
-            "description": "Прятать призрака если ты его обогнал",
-            "type": "bool",
-            "default": false
-        },
-        "record-practice": {
-            "name": "Записывать в практике",
-            "description": "Записывать попытки в режиме практики",
-            "type": "bool",
-            "default": false
+        "record-mode": {
+            "name": "Record Mode",
+            "description": "When to save ghost data",
+            "type": "string",
+            "default": "best-progress",
+            "one-of": ["best-progress", "completion-only", "always"]
         },
         "ghost-color": {
-            "name": "Цвет призрака",
-            "description": "Цвет отображения призрака",
+            "name": "Ghost Color",
+            "description": "Custom color for the ghost",
             "type": "color",
-            "default": [100, 200, 255]
+            "default": [100, 200, 255, 255]
+        },
+        "show-trail": {
+            "name": "Show Ghost Trail",
+            "description": "Display trail behind the ghost",
+            "type": "bool",
+            "default": true
         }
     },
-    "tags": ["gameplay", "enhancement", "interface"]
+    "resources": {
+        "files": [
+            "resources/*.png"
+        ]
+    },
+    "tags": ["gameplay", "enhancement", "utility"]
 }
