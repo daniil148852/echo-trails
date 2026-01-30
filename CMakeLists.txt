@@ -13,10 +13,7 @@ project(EchoTrails VERSION 1.0.0)
 
 # Собираем исходники
 add_library(${PROJECT_NAME} SHARED
-    src/main.cpp
-    src/GhostRecorder.cpp
-    src/GhostNode.cpp
-    src/hooks/PlayLayer.cpp
+    src/*.cpp
 )
 
 # ========== GEODE SDK ==========
