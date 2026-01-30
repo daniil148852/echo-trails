@@ -1,24 +1,31 @@
 cmake_minimum_required(VERSION 3.21)
-
-# Отключаем проверку SSL, если возникают проблемы с загрузкой ресурсов в РФ
-set(CMAKE_TLS_VERIFY OFF)
-
-# Название проекта берем из кода (EchoTrails)
-project(EchoTrails VERSION 1.0.0 LANGUAGES CXX)
-
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Поиск Geode SDK (автоматически использует переменную окружения GEODE_SDK)
-find_package(Geode REQUIRED)
+# Для iOS/Mac архитектуры
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "iOS" OR IOS)
+    set(CMAKE_OSX_ARCHITECTURES "arm64")
+else()
+    set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
+endif()
 
-# Собираем все файлы исходного кода из папки src
-file(GLOB_RECURSE SOURCES src/*.cpp)
+project(EchoTrails VERSION 1.0.0)
 
-# Создаем мод. Эта функция заменяет add_library и setup_geode_mod
-add_geode_mod(${PROJECT_NAME}
-    SOURCES ${SOURCES}
+# Собираем исходники
+add_library(${PROJECT_NAME} SHARED
+    src/main.cpp
 )
 
-# Добавляем пути для поиска заголовочных файлов
-target_include_directories(${PROJECT_NAME} PUBLIC include src)
+# ========== GEODE SDK ==========
+# Проверяем что GEODE_SDK установлен
+if (NOT DEFINED ENV{GEODE_SDK})
+    message(FATAL_ERROR "Unable to find Geode SDK! Please define GEODE_SDK environment variable to point to Geode")
+else()
+    message(STATUS "Found Geode: $ENV{GEODE_SDK}")
+endif()
+
+# Подключаем SDK через add_subdirectory (НЕ find_package!)
+add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)
+
+# Настраиваем мод
+setup_geode_mod(${PROJECT_NAME})
