@@ -14,11 +14,6 @@ project(EchoTrails VERSION 1.0.0)
 # Собираем исходники
 add_library(${PROJECT_NAME} SHARED
     src/main.cpp
-    src/GhostData.cpp
-    src/GhostRecorder.cpp
-    src/GhostPlayer.cpp
-    src/GhostSprite.cpp
-    src/DebugPopup.cpp
 )
 
 # ========== GEODE SDK ==========
