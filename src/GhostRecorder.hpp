@@ -24,12 +24,14 @@ public:
     bool saveCurrentRecording();
     bool shouldSaveRecording() const;
     
+    // Сделаем публичным для доступа извне
+    std::filesystem::path getRecordingPath(const std::string& levelID) const;
+    
 private:
     GhostRecorder() = default;
     
     GhostFrame capturePlayerState(PlayerObject* player, bool isPlayer2);
     GameMode getPlayerGameMode(PlayerObject* player);
-    std::filesystem::path getRecordingPath(const std::string& levelID);
     
     bool m_isRecording = false;
     GhostRecording m_currentRecording;
