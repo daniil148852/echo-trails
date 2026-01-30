@@ -1,40 +1,38 @@
 {
-	"geode": "4.10.2",
-	"gd": {
-		"win": "2.2074",
-		"android": "2.207"
-	},
-	"id": "yourname.ghost_trail",
-	"version": "v1.0.0",
-	"name": "Ghost Trail",
-	"developer": "YourName",
-	"description": "Эффект призрачного шлейфа для игрока с настройкой прозрачности и частоты.",
-	"repository": "https://github.com",
-	"settings": {
-		"trail-opacity": {
-			"name": "Прозрачность",
-			"description": "Насколько яркими будут призраки",
-			"type": "int",
-			"default": 150,
-			"min": 0,
-			"max": 255,
-			"control": {
-				"slider": true
-			}
-		},
-		"spawn-rate": {
-			"name": "Частота",
-			"description": "Интервал появления (в кадрах). Чем меньше, тем плотнее шлейф.",
-			"type": "int",
-			"default": 2,
-			"min": 1,
-			"max": 20
-		},
-		"use-player-color": {
-			"name": "Цвет игрока",
-			"description": "Красить призраков в основной цвет вашего скина",
-			"type": "bool",
-			"default": true
-		}
-	}
+    "geode": "4.10.2",
+    "gd": {
+        "win": "2.2074",
+        "android": "2.2074"
+    },
+    "id": "developer.ghost-trail",
+    "name": "Ghost Trail",
+    "version": "v1.0.0",
+    "developer": "Developer",
+    "description": "Creates a beautiful trail of fading ghost sprites behind the player as they move through levels. Fully customizable spawn rate, opacity, and color settings.",
+    "repository": "",
+    "tags": ["enhancement", "gameplay", "customization"],
+    "settings": {
+        "spawn-rate": {
+            "type": "int",
+            "default": 20,
+            "name": "Spawn Rate",
+            "description": "Number of ghost sprites spawned per second. Higher values create a smoother trail but may impact performance on older devices.",
+            "min": 1,
+            "max": 60
+        },
+        "opacity": {
+            "type": "int", 
+            "default": 150,
+            "name": "Ghost Opacity",
+            "description": "Initial opacity of ghost sprites (0-255). Lower values create more subtle ghosts.",
+            "min": 10,
+            "max": 255
+        },
+        "use-player-color": {
+            "type": "bool",
+            "default": true,
+            "name": "Use Player Color",
+            "description": "When enabled, ghost sprites will inherit the player's icon color. When disabled, ghosts will be white."
+        }
+    }
 }
