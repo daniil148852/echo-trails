@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build the mod
-        uses: geode-sdk/build-geode-mod@v2
+        uses: geode-sdk/build-geode-mod@v3
         with:
           sdk: nightly
           combine: true
@@ -48,7 +48,7 @@ jobs:
     needs: ['build']
     steps:
       - name: Combine builds
-        uses: geode-sdk/build-geode-mod/combine@v2
+        uses: geode-sdk/build-geode-mod/combine@v3
         id: build
 
       - name: Upload artifact
@@ -66,17 +66,19 @@ jobs:
         with:
           file_path: "mod.json"
 
+      # Обновляемый релиз для каждой ветки (Nightly)
       - name: "Update Nightly Release"
         uses: ncipollo/release-action@v1
         with:
           name: "Development Release"
-          body: "Auto-generated build for commit ${{ github.sha }}. Includes latest changes."
+          body: "Auto-generated build for commit ${{ github.sha }}."
           tag: "nightly"
           prerelease: true
           allowUpdates: true
           removeArtifacts: true
           artifacts: "${{ steps.build.outputs.build-output }}/*.geode"
 
+      # Постоянный релиз при пуше в main (по версии из mod.json)
       - name: "Create Versioned Release"
         if: github.ref == 'refs/heads/main'
         uses: ncipollo/release-action@v1
