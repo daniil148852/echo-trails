@@ -18,6 +18,7 @@ add_library(${PROJECT_NAME} SHARED
     src/GhostRecorder.cpp
     src/GhostPlayer.cpp
     src/GhostSprite.cpp
+    src/DebugPopup.cpp
 )
 
 # ========== GEODE SDK ==========
