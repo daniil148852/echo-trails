@@ -1,57 +1,40 @@
 {
-    "geode": "4.10.2",
-    "gd": {
-        "android": "2.2074"
-    },
-    "id": "yourname.echo-trails",
-    "name": "Echo Trails",
-    "version": "v1.0.0",
-    "developer": "YourName",
-    "description": "Watch your ghost from the best attempt while playing! Race against yourself.",
-    "repository": "https://github.com/yourname/EchoTrails",
-    "settings": {
-        "enabled": {
-            "name": "Enable Ghost",
-            "description": "Show ghost replay during gameplay",
-            "type": "bool",
-            "default": true
-        },
-        "ghost-opacity": {
-            "name": "Ghost Opacity",
-            "description": "Transparency of the ghost player",
-            "type": "float",
-            "default": 0.5,
-            "min": 0.1,
-            "max": 1.0,
-            "control": {
-                "slider": true,
-                "slider-step": 0.1
-            }
-        },
-        "record-mode": {
-            "name": "Record Mode",
-            "description": "When to save ghost data",
-            "type": "string",
-            "default": "best-progress",
-            "one-of": ["best-progress", "completion-only", "always"]
-        },
-        "ghost-color": {
-            "name": "Ghost Color",
-            "description": "Custom color for the ghost",
-            "type": "color",
-            "default": [100, 200, 255, 255]
-        },
-        "show-trail": {
-            "name": "Show Ghost Trail",
-            "description": "Display trail behind the ghost",
-            "type": "bool",
-            "default": true
-        }
-    },
-    "resources": {
-        "files": [
-            "resources/*.png"
-        ]
-    },
-    "tags": ["gameplay", "enhancement", "utility"]
+	"geode": "4.10.2",
+	"gd": {
+		"win": "2.2074",
+		"android": "2.207"
+	},
+	"id": "yourname.ghost_trail",
+	"version": "v1.0.0",
+	"name": "Ghost Trail",
+	"developer": "YourName",
+	"description": "Эффект призрачного шлейфа для игрока с настройкой прозрачности и частоты.",
+	"repository": "https://github.com",
+	"settings": {
+		"trail-opacity": {
+			"name": "Прозрачность",
+			"description": "Насколько яркими будут призраки",
+			"type": "int",
+			"default": 150,
+			"min": 0,
+			"max": 255,
+			"control": {
+				"slider": true
+			}
+		},
+		"spawn-rate": {
+			"name": "Частота",
+			"description": "Интервал появления (в кадрах). Чем меньше, тем плотнее шлейф.",
+			"type": "int",
+			"default": 2,
+			"min": 1,
+			"max": 20
+		},
+		"use-player-color": {
+			"name": "Цвет игрока",
+			"description": "Красить призраков в основной цвет вашего скина",
+			"type": "bool",
+			"default": true
+		}
+	}
 }
