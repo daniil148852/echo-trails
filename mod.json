@@ -8,8 +8,8 @@
     "name": "AI Assistant",
     "version": "v1.0.0",
     "developer": "YourName",
-    "description": "AI-powered assistant for Geometry Dash using Groq API. Get tips, analyze your gameplay, and chat with AI!",
-    "tags": ["interface", "enhancement", "online"],
+    "description": "AI-powered assistant for Geometry Dash using Groq API.",
+    "tags": ["interface", "enhancement"],
     "settings": {
         "api-key": {
             "name": "Groq API Key",
@@ -59,8 +59,5 @@
             "min": 50,
             "max": 1024
         }
-    },
-    "resources": {
-        "sprites": ["resources/*.png"]
     }
 }
