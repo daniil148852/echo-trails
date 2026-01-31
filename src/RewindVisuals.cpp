@@ -1,341 +1,407 @@
 #include "RewindVisuals.hpp"
 #include "TimeRewindManager.hpp"
 
-namespace TimeRewind {
+using namespace geode::prelude;
 
-    RewindOverlay* RewindOverlay::create() {
-        auto ret = new RewindOverlay();
-        if (ret && ret->init()) {
-            ret->autorelease();
-            return ret;
-        }
-        CC_SAFE_DELETE(ret);
-        return nullptr;
+RewindVisuals* RewindVisuals::s_instance = nullptr;
+
+// ============================================================
+// Initialization
+// ============================================================
+
+bool RewindVisuals::init() {
+    if (!CCNode::init()) {
+        return false;
     }
+    
+    m_overlayContainer = nullptr;
+    m_dimLayer = nullptr;
+    m_rewindLabel = nullptr;
+    m_chargesLabel = nullptr;
+    m_rewindIcon = nullptr;
+    m_progressBar = nullptr;
+    m_vhsEffectContainer = nullptr;
+    m_scanlines = nullptr;
+    m_staticNoise = nullptr;
+    
+    m_glitchTimer = 0.0f;
+    m_scanlineOffset = 0.0f;
+    m_labelPulseTimer = 0.0f;
+    m_effectsEnabled = true;
+    m_isShowingOverlay = false;
+    
+    // Enable updates
+    scheduleUpdate();
+    
+    return true;
+}
 
-    bool RewindOverlay::init() {
-        if (!CCNode::init()) {
-            return false;
-        }
-        
-        auto winSize = CCDirector::sharedDirector()->getWinSize();
-        
-        m_grayscaleOverlay = CCLayerColor::create(ccc4(0, 0, 0, 0));
-        m_grayscaleOverlay->setContentSize(winSize);
-        m_grayscaleOverlay->setPosition(CCPointZero);
-        m_grayscaleOverlay->setVisible(false);
-        this->addChild(m_grayscaleOverlay, 0);
-        
-        m_rewindingLabel = CCLabelBMFont::create("REWINDING", "bigFont.fnt");
-        m_rewindingLabel->setPosition(ccp(winSize.width / 2, winSize.height / 2));
-        m_rewindingLabel->setScale(0.8f);
-        m_rewindingLabel->setOpacity(0);
-        m_rewindingLabel->setVisible(false);
-        this->addChild(m_rewindingLabel, 10);
-        
-        m_chargesLabel = CCLabelBMFont::create("", "bigFont.fnt");
-        m_chargesLabel->setAnchorPoint(ccp(1.0f, 1.0f));
-        m_chargesLabel->setPosition(ccp(winSize.width - 10, winSize.height - 10));
-        m_chargesLabel->setScale(0.4f);
-        m_chargesLabel->setColor(ccc3(255, 200, 100));
-        this->addChild(m_chargesLabel, 100);
-        
-        m_glitchContainer = CCNode::create();
-        this->addChild(m_glitchContainer, 5);
-        
-        createVHSLines();
-        createScanlines();
-        
-        m_vhsTimer = 0.0f;
-        m_glitchIntensity = 0.0f;
-        m_isAnimating = false;
-        m_animationProgress = 0.0f;
-        
-        this->scheduleUpdate();
-        
-        return true;
-    }
-
-    void RewindOverlay::createVHSLines() {
-        m_vhsLines = CCSprite::create();
-        m_vhsLines->setVisible(false);
-        m_glitchContainer->addChild(m_vhsLines);
-    }
-
-    void RewindOverlay::createScanlines() {
-        auto winSize = CCDirector::sharedDirector()->getWinSize();
-        
-        int lineCount = static_cast<int>(winSize.height / 4);
-        
-        for (int i = 0; i < lineCount; i++) {
-            auto line = CCLayerColor::create(ccc4(0, 0, 0, 10), winSize.width, 1);
-            if (line) {
-                line->setPosition(ccp(0, i * 4));
-                line->setVisible(false);
-                m_glitchContainer->addChild(line);
-            }
-        }
-    }
-
-    void RewindOverlay::onHideGrayscale() {
-        m_grayscaleOverlay->setVisible(false);
-    }
-
-    void RewindOverlay::onHideLabel() {
-        m_rewindingLabel->setVisible(false);
-    }
-
-    void RewindOverlay::showRewindUI() {
-        m_isAnimating = true;
-        m_animationProgress = 0.0f;
-        
-        auto manager = TimeRewindManager::get();
-        
-        if (manager->isGrayscaleEnabled()) {
-            m_grayscaleOverlay->setVisible(true);
-            m_grayscaleOverlay->setOpacity(0);
-            m_grayscaleOverlay->runAction(CCFadeTo::create(0.2f, 80));
-        }
-        
-        m_rewindingLabel->setVisible(true);
-        m_rewindingLabel->setOpacity(0);
-        m_rewindingLabel->setScale(1.2f);
-        m_rewindingLabel->runAction(CCSpawn::create(
-            CCFadeTo::create(0.15f, 255),
-            CCScaleTo::create(0.15f, 0.8f),
-            nullptr
-        ));
-        
-        auto pulse = CCSequence::create(
-            CCScaleTo::create(0.3f, 0.85f),
-            CCScaleTo::create(0.3f, 0.75f),
-            nullptr
-        );
-        m_rewindingLabel->runAction(CCRepeatForever::create(pulse));
-        
-        if (manager->isVHSEffectEnabled()) {
-            enableVHSEffect(true);
-            triggerGlitch(1.0f);
-        }
-    }
-
-    void RewindOverlay::hideRewindUI() {
-        if (m_grayscaleOverlay->isVisible()) {
-            m_grayscaleOverlay->runAction(CCSequence::create(
-                CCFadeTo::create(0.3f, 0),
-                CCCallFunc::create(this, callfunc_selector(RewindOverlay::onHideGrayscale)),
-                nullptr
-            ));
-        }
-        
-        m_rewindingLabel->stopAllActions();
-        m_rewindingLabel->runAction(CCSequence::create(
-            CCFadeTo::create(0.2f, 0),
-            CCCallFunc::create(this, callfunc_selector(RewindOverlay::onHideLabel)),
-            nullptr
-        ));
-        
-        enableVHSEffect(false);
-        
-        m_isAnimating = false;
-    }
-
-    void RewindOverlay::updateChargesDisplay(int charges, int maxCharges) {
-        std::string text = fmt::format("Rewind: {}/{}", charges, maxCharges);
-        m_chargesLabel->setString(text.c_str());
-        
-        if (charges == 0) {
-            m_chargesLabel->setColor(ccc3(255, 80, 80));
-        } else if (charges == 1) {
-            m_chargesLabel->setColor(ccc3(255, 200, 80));
+RewindVisuals* RewindVisuals::get() {
+    if (!s_instance) {
+        s_instance = new RewindVisuals();
+        if (s_instance && s_instance->init()) {
+            s_instance->autorelease();
+            s_instance->retain(); // Keep alive
         } else {
-            m_chargesLabel->setColor(ccc3(100, 255, 100));
-        }
-        
-        m_chargesLabel->stopAllActions();
-        m_chargesLabel->setScale(0.5f);
-        m_chargesLabel->runAction(CCScaleTo::create(0.15f, 0.4f));
-    }
-
-    void RewindOverlay::setRewindProgress(float progress) {
-        m_animationProgress = progress;
-        
-        int dots = static_cast<int>(progress * 3) % 4;
-        std::string dotStr(dots, '.');
-        std::string text = fmt::format("REWINDING{}", dotStr);
-        m_rewindingLabel->setString(text.c_str());
-        
-        if (progress > 0.8f) {
-            float intensity = (progress - 0.8f) * 5.0f;
-            triggerGlitch(intensity);
+            CC_SAFE_DELETE(s_instance);
         }
     }
+    return s_instance;
+}
 
-    void RewindOverlay::enableGrayscale(bool enable) {
-        if (enable) {
-            m_grayscaleOverlay->setVisible(true);
-            m_grayscaleOverlay->setOpacity(80);
-        } else {
-            m_grayscaleOverlay->setVisible(false);
-        }
+void RewindVisuals::destroy() {
+    if (s_instance) {
+        s_instance->cleanup();
+        s_instance->release();
+        s_instance = nullptr;
     }
+}
 
-    void RewindOverlay::enableVHSEffect(bool enable) {
-        if (m_vhsLines) {
-            m_vhsLines->setVisible(enable);
-        }
-        
-        for (auto child : CCArrayExt<CCNode*>(m_glitchContainer->getChildren())) {
-            child->setVisible(enable);
-        }
+// ============================================================
+// Charges Display
+// ============================================================
+
+void RewindVisuals::createChargesDisplay(PlayLayer* playLayer) {
+    if (!playLayer) return;
+    
+    // Remove existing label if any
+    if (m_chargesLabel) {
+        m_chargesLabel->removeFromParent();
+        m_chargesLabel = nullptr;
     }
-
-    void RewindOverlay::triggerGlitch(float intensity) {
-        m_glitchIntensity = intensity;
+    
+    auto winSize = CCDirector::sharedDirector()->getWinSize();
+    
+    // Create charges label
+    m_chargesLabel = CCLabelBMFont::create("", "bigFont.fnt");
+    m_chargesLabel->setScale(0.35f);
+    m_chargesLabel->setAnchorPoint({1.0f, 1.0f});
+    m_chargesLabel->setPosition({winSize.width - 10.0f, winSize.height - 10.0f});
+    m_chargesLabel->setZOrder(1000);
+    m_chargesLabel->setID("time-rewind-charges"_spr);
+    
+    // Add outline effect
+    m_chargesLabel->setColor({255, 255, 255});
+    m_chargesLabel->setOpacity(220);
+    
+    // Add to UI layer (to avoid camera transform issues in GD 2.2)
+    if (playLayer->m_uiLayer) {
+        playLayer->m_uiLayer->addChild(m_chargesLabel);
+    } else {
+        playLayer->addChild(m_chargesLabel);
     }
+    
+    // Initial update
+    auto manager = TimeRewindManager::get();
+    updateChargesDisplay(manager->getCharges(), manager->getMaxCharges());
+}
 
-    void RewindOverlay::updateGlitchEffect(float dt) {
-        if (m_glitchIntensity <= 0.0f || !TimeRewindManager::get()->isVHSEffectEnabled()) {
-            return;
-        }
-        
-        auto winSize = CCDirector::sharedDirector()->getWinSize();
-        
-        if (m_vhsLines && m_vhsLines->isVisible()) {
-            m_vhsTimer += dt * 100.0f;
-            float yOffset = std::fmod(m_vhsTimer, winSize.height);
-            m_vhsLines->setPositionY(yOffset);
-        }
-        
-        m_glitchIntensity *= 0.95f;
-        if (m_glitchIntensity < 0.01f) {
-            m_glitchIntensity = 0.0f;
-        }
+void RewindVisuals::updateChargesDisplay(int charges, int maxCharges) {
+    if (!m_chargesLabel) return;
+    
+    // Format: "⏪ 3/3" or "REWIND: 3/3"
+    std::string text = fmt::format("REWIND: {}/{}", charges, maxCharges);
+    m_chargesLabel->setString(text.c_str());
+    
+    // Color based on remaining charges
+    ccColor3B color;
+    if (charges == 0) {
+        color = {255, 80, 80};      // Red - no charges
+    } else if (charges == 1) {
+        color = {255, 200, 80};     // Yellow - low charges
+    } else {
+        color = {120, 255, 120};    // Green - charges available
     }
+    m_chargesLabel->setColor(color);
+}
 
-    void RewindOverlay::update(float dt) {
-        updateGlitchEffect(dt);
-        
-        if (m_isAnimating && TimeRewindManager::get()->isVHSEffectEnabled()) {
-            float randVal = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-            if (randVal < 0.05f) {
-                float randIntensity = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-                triggerGlitch(0.3f + randIntensity * 0.3f);
-            }
-        }
+// ============================================================
+// Rewind Overlay
+// ============================================================
+
+void RewindVisuals::showRewindOverlay(PlayLayer* playLayer) {
+    if (!playLayer || m_isShowingOverlay) return;
+    
+    m_isShowingOverlay = true;
+    
+    auto winSize = CCDirector::sharedDirector()->getWinSize();
+    
+    // Create overlay container
+    m_overlayContainer = CCNode::create();
+    m_overlayContainer->setZOrder(999);
+    m_overlayContainer->setID("time-rewind-overlay"_spr);
+    
+    // === Dim layer (semi-transparent background) ===
+    m_dimLayer = CCLayerColor::create({0, 0, 0, 100});
+    m_overlayContainer->addChild(m_dimLayer, 0);
+    
+    // === REWINDING label ===
+    createRewindLabel();
+    
+    // === Progress bar ===
+    createProgressBar();
+    
+    // === VHS effects ===
+    if (m_effectsEnabled) {
+        createVHSEffect();
     }
-
-    // RewindVisuals implementation
-
-    RewindVisuals* RewindVisuals::s_instance = nullptr;
-
-    RewindVisuals::RewindVisuals()
-        : m_overlay(nullptr)
-        , m_playLayer(nullptr)
-        , m_initialized(false)
-    {}
-
-    RewindVisuals* RewindVisuals::get() {
-        if (!s_instance) {
-            s_instance = new RewindVisuals();
-        }
-        return s_instance;
+    
+    // Add overlay to UI layer
+    if (playLayer->m_uiLayer) {
+        playLayer->m_uiLayer->addChild(m_overlayContainer);
+    } else {
+        playLayer->addChild(m_overlayContainer);
     }
+    
+    // Animate entrance
+    m_overlayContainer->setScale(1.1f);
+    m_overlayContainer->setOpacity(0);
+    
+    auto scaleAction = CCEaseOut::create(CCScaleTo::create(0.15f, 1.0f), 2.0f);
+    auto fadeAction = CCFadeIn::create(0.15f);
+    m_overlayContainer->runAction(CCSpawn::create(scaleAction, fadeAction, nullptr));
+    
+    log::debug("[RewindVisuals] Showing overlay");
+}
 
-    void RewindVisuals::destroy() {
-        if (s_instance) {
-            s_instance->cleanup();
-            delete s_instance;
-            s_instance = nullptr;
-        }
+void RewindVisuals::hideRewindOverlay(PlayLayer* playLayer) {
+    if (!m_overlayContainer || !m_isShowingOverlay) return;
+    
+    m_isShowingOverlay = false;
+    
+    // Animate exit
+    auto fadeAction = CCFadeOut::create(0.2f);
+    auto scaleAction = CCScaleTo::create(0.2f, 0.9f);
+    auto removeAction = CCRemoveSelf::create();
+    
+    m_overlayContainer->runAction(CCSequence::create(
+        CCSpawn::create(fadeAction, scaleAction, nullptr),
+        removeAction,
+        nullptr
+    ));
+    
+    // Clear references
+    m_overlayContainer = nullptr;
+    m_dimLayer = nullptr;
+    m_rewindLabel = nullptr;
+    m_progressBar = nullptr;
+    m_vhsEffectContainer = nullptr;
+    m_scanlines = nullptr;
+    m_staticNoise = nullptr;
+    
+    log::debug("[RewindVisuals] Hiding overlay");
+}
+
+void RewindVisuals::updateRewindProgress(float progress) {
+    // Update progress bar
+    if (m_progressBar) {
+        m_progressBar->setPercentage(progress * 100.0f);
     }
+    
+    // Update label text with animation
+    if (m_rewindLabel) {
+        // Cycle through dots
+        int dotCount = static_cast<int>(progress * 12.0f) % 4;
+        std::string text = "REWINDING";
+        for (int i = 0; i < dotCount; i++) {
+            text += ".";
+        }
+        m_rewindLabel->setString(text.c_str());
+    }
+    
+    // Intensify VHS effect as rewind progresses
+    if (m_vhsEffectContainer && m_effectsEnabled) {
+        float intensity = 0.5f + progress * 0.5f;
+        m_vhsEffectContainer->setOpacity(static_cast<GLubyte>(intensity * 180));
+    }
+}
 
-    void RewindVisuals::init(PlayLayer* playLayer) {
-        m_playLayer = playLayer;
-        
-        if (!playLayer) {
-            log::error("RewindVisuals::init - PlayLayer is null");
-            return;
-        }
-        
-        m_overlay = RewindOverlay::create();
-        if (m_overlay) {
-            if (playLayer->m_uiLayer) {
-                playLayer->m_uiLayer->addChild(m_overlay, 1000);
-            } else {
-                playLayer->addChild(m_overlay, 1000);
-            }
-            
-            auto manager = TimeRewindManager::get();
-            m_overlay->updateChargesDisplay(manager->getCharges(), manager->getMaxCharges());
-        }
-        
-        auto manager = TimeRewindManager::get();
-        manager->onRewindStart = [this]() {
-            onRewindStart();
+// ============================================================
+// Effect Creation
+// ============================================================
+
+void RewindVisuals::createRewindLabel() {
+    if (!m_overlayContainer) return;
+    
+    auto winSize = CCDirector::sharedDirector()->getWinSize();
+    
+    m_rewindLabel = CCLabelBMFont::create("REWINDING", "goldFont.fnt");
+    m_rewindLabel->setPosition({winSize.width / 2.0f, winSize.height / 2.0f + 60.0f});
+    m_rewindLabel->setScale(0.8f);
+    m_rewindLabel->setColor({255, 120, 120});
+    m_rewindLabel->setZOrder(10);
+    
+    m_overlayContainer->addChild(m_rewindLabel);
+    
+    // Add pulsing animation
+    auto pulseUp = CCScaleTo::create(0.4f, 0.85f);
+    auto pulseDown = CCScaleTo::create(0.4f, 0.75f);
+    auto pulseSeq = CCSequence::create(pulseUp, pulseDown, nullptr);
+    m_rewindLabel->runAction(CCRepeatForever::create(pulseSeq));
+}
+
+void RewindVisuals::createProgressBar() {
+    if (!m_overlayContainer) return;
+    
+    auto winSize = CCDirector::sharedDirector()->getWinSize();
+    
+    // Background bar
+    auto bgBar = CCSprite::create("GJ_progressBar_001.png");
+    bgBar->setPosition({winSize.width / 2.0f, winSize.height / 2.0f + 20.0f});
+    bgBar->setScaleX(0.8f);
+    bgBar->setScaleY(0.6f);
+    bgBar->setColor({50, 50, 50});
+    bgBar->setOpacity(180);
+    m_overlayContainer->addChild(bgBar, 5);
+    
+    // Progress bar
+    auto barSprite = CCSprite::create("GJ_progressBar_001.png");
+    barSprite->setColor({255, 100, 100});
+    
+    m_progressBar = CCProgressTimer::create(barSprite);
+    m_progressBar->setType(CCProgressTimerType::kCCProgressTimerTypeBar);
+    m_progressBar->setMidpoint({0, 0.5f});
+    m_progressBar->setBarChangeRate({1, 0});
+    m_progressBar->setPosition(bgBar->getPosition());
+    m_progressBar->setScaleX(0.78f);
+    m_progressBar->setScaleY(0.55f);
+    m_progressBar->setPercentage(0);
+    m_progressBar->setZOrder(6);
+    
+    m_overlayContainer->addChild(m_progressBar);
+}
+
+void RewindVisuals::createVHSEffect() {
+    if (!m_overlayContainer) return;
+    
+    auto winSize = CCDirector::sharedDirector()->getWinSize();
+    
+    m_vhsEffectContainer = CCNode::create();
+    m_vhsEffectContainer->setZOrder(2);
+    m_overlayContainer->addChild(m_vhsEffectContainer);
+    
+    // Create scanlines
+    createScanlines();
+    
+    // Create static noise layer
+    m_staticNoise = CCLayerColor::create({255, 255, 255, 0});
+    m_staticNoise->setContentSize(winSize);
+    m_staticNoise->setOpacity(0);
+    m_vhsEffectContainer->addChild(m_staticNoise, 1);
+}
+
+void RewindVisuals::createScanlines() {
+    if (!m_vhsEffectContainer) return;
+    
+    auto winSize = CCDirector::sharedDirector()->getWinSize();
+    
+    m_scanlines = CCDrawNode::create();
+    m_scanlines->setZOrder(2);
+    
+    // Draw horizontal scanlines
+    ccColor4F lineColor = {0, 0, 0, 0.15f};
+    
+    for (float y = 0; y < winSize.height; y += 3.0f) {
+        CCPoint verts[4] = {
+            {0, y},
+            {winSize.width, y},
+            {winSize.width, y + 1.0f},
+            {0, y + 1.0f}
         };
-        manager->onRewindEnd = [this]() {
-            onRewindEnd();
-        };
-        manager->onRewindProgress = [this](float progress) {
-            onRewindProgress(progress);
-        };
+        m_scanlines->drawPolygon(verts, 4, lineColor, 0, lineColor);
+    }
+    
+    m_vhsEffectContainer->addChild(m_scanlines);
+}
+
+// ============================================================
+// Animation Updates
+// ============================================================
+
+void RewindVisuals::update(float dt) {
+    if (!m_isShowingOverlay) return;
+    
+    m_glitchTimer += dt;
+    
+    if (m_effectsEnabled) {
+        updateVHSEffect(dt);
+        updateScanlines(dt);
+    }
+    
+    updateLabelPulse(dt);
+}
+
+void RewindVisuals::updateVHSEffect(float dt) {
+    if (!m_vhsEffectContainer) return;
+    
+    // Random glitch effect
+    if (m_glitchTimer > 0.1f && (rand() % 100) < 10) {
+        m_glitchTimer = 0.0f;
         
-        m_initialized = true;
-        log::info("RewindVisuals initialized");
-    }
-
-    void RewindVisuals::cleanup() {
-        if (m_overlay) {
-            m_overlay->removeFromParent();
-            m_overlay = nullptr;
-        }
+        // Random offset
+        float offsetX = (rand() % 10 - 5) * 0.5f;
+        float offsetY = (rand() % 4 - 2) * 0.5f;
         
-        m_playLayer = nullptr;
-        m_initialized = false;
+        auto originalPos = m_vhsEffectContainer->getPosition();
+        m_vhsEffectContainer->setPosition(originalPos + CCPoint{offsetX, offsetY});
         
-        log::debug("RewindVisuals cleaned up");
-    }
-
-    void RewindVisuals::onRewindStart() {
-        if (m_overlay) {
-            m_overlay->showRewindUI();
-        }
-        log::debug("RewindVisuals: onRewindStart");
-    }
-
-    void RewindVisuals::onRewindEnd() {
-        if (m_overlay) {
-            m_overlay->hideRewindUI();
-            
-            auto manager = TimeRewindManager::get();
-            m_overlay->updateChargesDisplay(manager->getCharges(), manager->getMaxCharges());
-        }
-        log::debug("RewindVisuals: onRewindEnd");
-    }
-
-    void RewindVisuals::onRewindProgress(float progress) {
-        if (m_overlay) {
-            m_overlay->setRewindProgress(progress);
+        // Quick shake back
+        auto moveBack = CCMoveTo::create(0.05f, originalPos);
+        m_vhsEffectContainer->runAction(moveBack);
+        
+        // Static noise flash
+        if (m_staticNoise) {
+            m_staticNoise->setOpacity(rand() % 30);
+            auto fadeOut = CCFadeTo::create(0.08f, 0);
+            m_staticNoise->runAction(fadeOut);
         }
     }
+}
 
-    void RewindVisuals::updateCharges(int charges, int maxCharges) {
-        if (m_overlay) {
-            m_overlay->updateChargesDisplay(charges, maxCharges);
-        }
+void RewindVisuals::updateScanlines(float dt) {
+    if (!m_scanlines) return;
+    
+    m_scanlineOffset += dt * 60.0f; // Scroll speed
+    
+    if (m_scanlineOffset > 3.0f) {
+        m_scanlineOffset = 0.0f;
     }
+    
+    // Move scanlines up slightly for scrolling effect
+    m_scanlines->setPositionY(m_scanlineOffset);
+}
 
-    void RewindVisuals::setGrayscaleEnabled(bool enabled) {
-        if (m_overlay) {
-            m_overlay->enableGrayscale(enabled);
-        }
+void RewindVisuals::updateLabelPulse(float dt) {
+    // Label pulsing is handled by CCAction, no need for manual update
+}
+
+// ============================================================
+// Cleanup
+// ============================================================
+
+void RewindVisuals::cleanup() {
+    // Remove overlay if showing
+    if (m_overlayContainer) {
+        m_overlayContainer->removeFromParent();
+        m_overlayContainer = nullptr;
     }
-
-    void RewindVisuals::setVHSEnabled(bool enabled) {
-        if (m_overlay) {
-            m_overlay->enableVHSEffect(enabled);
-        }
+    
+    // Remove charges label
+    if (m_chargesLabel) {
+        m_chargesLabel->removeFromParent();
+        m_chargesLabel = nullptr;
     }
-
+    
+    // Clear all references
+    m_dimLayer = nullptr;
+    m_rewindLabel = nullptr;
+    m_progressBar = nullptr;
+    m_vhsEffectContainer = nullptr;
+    m_scanlines = nullptr;
+    m_staticNoise = nullptr;
+    m_rewindIcon = nullptr;
+    
+    m_isShowingOverlay = false;
+    
+    log::debug("[RewindVisuals] Cleaned up");
 }
