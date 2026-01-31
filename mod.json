@@ -1,72 +1,59 @@
 {
     "geode": "4.10.2",
     "gd": {
-        "win": "2.2074",
-        "android": "2.2074"
+        "android": "2.2074",
+        "win": "2.2074"
     },
     "id": "developer.time-rewind",
     "name": "Time Rewind",
     "version": "v1.0.0",
     "developer": "Developer",
-    "description": "Rewind time when you die! Instead of restarting, the game rewinds a few seconds like a VHS tape.",
-    "repository": "",
-    "tags": ["gameplay", "enhancement"],
+    "description": "Rewind time when you die! Get a second chance with visual rewind effects.",
+    "tags": ["gameplay", "enhancement", "utility"],
     "settings": {
-        "enabled": {
-            "type": "bool",
-            "default": true,
-            "name": "Enable Time Rewind",
-            "description": "Master toggle for the time rewind feature."
+        "rewind-charges": {
+            "type": "int",
+            "default": 3,
+            "min": 1,
+            "max": 10,
+            "name": "Rewind Charges",
+            "description": "Number of rewinds per attempt"
         },
         "rewind-duration": {
             "type": "float",
             "default": 2.0,
-            "name": "Rewind Duration",
-            "description": "How many seconds to rewind when you die.",
             "min": 0.5,
-            "max": 5.0
+            "max": 5.0,
+            "name": "Rewind Duration (seconds)",
+            "description": "How far back to rewind"
         },
         "rewind-speed": {
             "type": "float",
             "default": 2.0,
-            "name": "Rewind Speed",
-            "description": "Playback speed of the rewind animation.",
-            "min": 0.5,
-            "max": 5.0
-        },
-        "max-rewinds": {
-            "type": "int",
-            "default": 3,
-            "name": "Max Rewinds Per Attempt",
-            "description": "Number of rewinds allowed before normal death.",
-            "min": 1,
-            "max": 10
-        },
-        "infinite-rewinds": {
-            "type": "bool",
-            "default": false,
-            "name": "Infinite Rewinds",
-            "description": "Allow unlimited rewinds."
+            "min": 1.0,
+            "max": 4.0,
+            "name": "Rewind Speed Multiplier",
+            "description": "How fast the rewind animation plays"
         },
         "record-fps": {
             "type": "int",
             "default": 60,
-            "name": "Recording FPS",
-            "description": "Frames per second for state recording.",
             "min": 30,
-            "max": 120
+            "max": 240,
+            "name": "Recording FPS",
+            "description": "State recording frequency"
         },
-        "visual-effects": {
+        "vhs-effect": {
             "type": "bool",
             "default": true,
-            "name": "VHS Visual Effects",
-            "description": "Show retro VHS-style effects during rewind."
+            "name": "VHS Effect",
+            "description": "Enable VHS glitch effect during rewind"
         },
-        "sound-effects": {
+        "grayscale-effect": {
             "type": "bool",
             "default": true,
-            "name": "Rewind Sound",
-            "description": "Play sound effect during rewind."
+            "name": "Grayscale Effect",
+            "description": "Enable grayscale filter during rewind"
         }
     }
 }
