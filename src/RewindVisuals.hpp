@@ -28,11 +28,12 @@ private:
     float m_glitchTimer;
     float m_scanlineOffset;
     float m_labelPulseTimer;
+    float m_vhsIntensity;
     bool m_effectsEnabled;
     bool m_isShowingOverlay;
     
     // Private constructor (singleton pattern via create)
-    bool init();
+    bool init() override;
     
 public:
     static RewindVisuals* get();
@@ -66,7 +67,7 @@ public:
     /**
      * @brief Clean up all visual elements
      */
-    void cleanup();
+    void cleanupVisuals();
     
     /**
      * @brief Set whether effects are enabled
