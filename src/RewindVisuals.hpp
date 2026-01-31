@@ -14,18 +14,13 @@ public:
     // Визуальные элементы
     CCLayerColor* m_tintLayer = nullptr;
     CCNode* m_effectContainer = nullptr;
-    CCSprite* m_vhsLines = nullptr;
-    std::vector<CCSprite*> m_ghostTrail;
+    std::vector<CCNode*> m_vhsLines;
+    std::vector<CCNode*> m_glitchBars;
     
     // Состояние
     bool m_active = false;
     float m_effectTime = 0.0f;
     PlayLayer* m_playLayer = nullptr;
-    
-    // Настройки эффектов
-    ccColor3B m_rewindTint = ccc3(100, 150, 255);
-    float m_chromaticAberration = 3.0f;
-    float m_vhsIntensity = 0.5f;
     
     void startRewindEffect(PlayLayer* playLayer);
     void updateEffect(float progress);
@@ -35,7 +30,5 @@ public:
 private:
     void createTintOverlay();
     void createVHSEffect();
-    void createGhostTrail();
-    void updateGhostTrail(float progress);
-    void updateVHSEffect(float progress);
+    void updateVHSLines();
 };
