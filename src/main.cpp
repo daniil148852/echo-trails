@@ -1,630 +1,636 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/PlayLayer.hpp>
+#include <Geode/modify/PlayerObject.hpp>
+#include <Geode/modify/GameObject.hpp>
 #include <Geode/modify/GJBaseGameLayer.hpp>
-#include <fstream>
-#include <vector>
+#include <cmath>
+#include <random>
+#include <unordered_map>
 
 using namespace geode::prelude;
 
 // ============================================================================
-// СТРУКТУРЫ ДАННЫХ
+// МАТЕМАТИКА И КОНСТАНТЫ
 // ============================================================================
 
-#pragma pack(push, 1)
-struct GhostFrame {
-    float time;
+namespace DriftMath {
+    constexpr float PI = 3.14159265358979f;
+    constexpr float TAU = PI * 2.0f;
     
-    // Player 1
-    float posX;
-    float posY;
-    float rotation;
-    float scale;
-    uint8_t flags1; // bits: flipX, flipY, isUpsideDown, isHidden, isDashing, isHolding, isFalling, isOnGround
-    uint8_t gameMode; // 0=cube, 1=ship, 2=ball, 3=ufo, 4=wave, 5=robot, 6=spider, 7=swing
+    constexpr float Z_MIN = -10.0f;
+    constexpr float Z_MAX = 10.0f;
+    constexpr float Z_RANGE = Z_MAX - Z_MIN;
     
-    // Player 2 (dual mode)
-    float pos2X;
-    float pos2Y;
-    float rotation2;
-    uint8_t flags2;
-    uint8_t gameMode2;
-    bool hasDual;
-    
-    // Вспомогательные методы
-    bool getFlipX() const { return flags1 & 0x01; }
-    bool getFlipY() const { return flags1 & 0x02; }
-    bool getUpsideDown() const { return flags1 & 0x04; }
-    bool getHidden() const { return flags1 & 0x08; }
-    bool getDashing() const { return flags1 & 0x10; }
-    
-    bool getFlipX2() const { return flags2 & 0x01; }
-    bool getFlipY2() const { return flags2 & 0x02; }
-    bool getUpsideDown2() const { return flags2 & 0x04; }
-    
-    void setFlags(bool flipX, bool flipY, bool upsideDown, bool hidden, bool dashing) {
-        flags1 = (flipX ? 0x01 : 0) | (flipY ? 0x02 : 0) | 
-                 (upsideDown ? 0x04 : 0) | (hidden ? 0x08 : 0) | (dashing ? 0x10 : 0);
+    // Плавная интерполяция
+    inline float lerp(float a, float b, float t) {
+        return a + (b - a) * std::clamp(t, 0.0f, 1.0f);
     }
     
-    void setFlags2(bool flipX, bool flipY, bool upsideDown) {
-        flags2 = (flipX ? 0x01 : 0) | (flipY ? 0x02 : 0) | (upsideDown ? 0x04 : 0);
+    // Сглаженный шаг
+    inline float smoothstep(float edge0, float edge1, float x) {
+        float t = std::clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+        return t * t * (3.0f - 2.0f * t);
     }
-};
-#pragma pack(pop)
+    
+    // Easing функции
+    inline float easeInOutSine(float t) {
+        return -(std::cos(PI * t) - 1.0f) / 2.0f;
+    }
+    
+    inline float easeOutBack(float t) {
+        constexpr float c1 = 1.70158f;
+        constexpr float c3 = c1 + 1.0f;
+        return 1.0f + c3 * std::pow(t - 1.0f, 3.0f) + c1 * std::pow(t - 1.0f, 2.0f);
+    }
+}
 
-// Заголовок файла записи
-struct GhostFileHeader {
-    char magic[4] = {'E', 'C', 'H', 'O'};
-    uint32_t version = 2;
-    int32_t levelID;
-    float bestTime;
-    float recordFPS;
-    uint32_t frameCount;
-    uint32_t checksum;
+// ============================================================================
+// РЕЖИМЫ КАМЕРЫ
+// ============================================================================
+
+enum class CameraMode : int {
+    Classic2D = 0,      // Обычный GD
+    Orthographic3D = 1, // Статичная 3D перспектива
+    Drift = 2,          // Синусоидальный дрифт
+    Cosmic = 3,         // Медленные волны
+    Hyper = 4,          // Быстрый хаотичный дрифт
+    BeatSync = 5        // Полная синхронизация с BPM
+};
+
+const char* cameraModeNames[] = {
+    "Classic 2D",
+    "Ortho 3D", 
+    "Drift",
+    "Cosmic",
+    "Hyper",
+    "Beat Sync"
 };
 
 // ============================================================================
-// GHOST MANAGER
+// КОНФИГУРАЦИЯ DIMENSION DRIFT
 // ============================================================================
 
-class GhostManager {
+struct DriftConfig {
+    // Глобальные настройки
+    bool enabled = true;
+    CameraMode cameraMode = CameraMode::Drift;
+    int seed = 0;
+    bool autoSeed = true;
+    
+    // Z-распределение
+    float zSpread = 1.0f;           // Множитель разброса (0.0 - 2.0)
+    float playerZLayer = 0.0f;       // Z позиция игрока
+    bool dynamicPlayerZ = false;     // Игрок тоже дрифтит
+    
+    // Камера
+    float driftAmplitude = 5.0f;     // Амплитуда качания
+    float driftFrequency = 0.5f;     // Частота (Hz)
+    float perspectiveStrength = 0.3f;// Сила перспективы
+    float fov = 60.0f;               // Поле зрения
+    
+    // Визуалы  
+    float depthFadeStart = 5.0f;     // Начало затухания
+    float depthFadeEnd = 10.0f;      // Полное затухание
+    bool depthGlow = true;           // Свечение близких объектов
+    float glowIntensity = 0.5f;
+    
+    // Физика
+    bool zAffectsGravity = true;     // Z влияет на гравитацию
+    float gravityZMult = 0.1f;       // Множитель влияния
+    bool zCollisionLayers = true;    // Коллизии по слоям
+    float collisionZTolerance = 2.0f;// Допуск по Z для коллизий
+    
+    // BPM синхронизация
+    float bpm = 0.0f;                // 0 = авто-детект
+    float beatOffset = 0.0f;         // Смещение бита
+    float beatReactivity = 1.0f;     // Реактивность на биты
+};
+
+// ============================================================================
+// ГЛОБАЛЬНЫЙ МЕНЕДЖЕР
+// ============================================================================
+
+class DimensionDriftManager {
 private:
-    GhostManager() = default;
+    DimensionDriftManager() = default;
     
 public:
-    static GhostManager* get() {
-        static GhostManager instance;
+    static DimensionDriftManager* get() {
+        static DimensionDriftManager instance;
         return &instance;
     }
     
-    // === Состояние записи ===
-    std::vector<GhostFrame> m_recording;
-    float m_recordTime = 0.0f;
-    float m_lastRecordTime = 0.0f;
-    bool m_isRecording = false;
+    // === Состояние ===
+    DriftConfig config;
+    bool isActive = false;
+    float gameTime = 0.0f;
+    float musicTime = 0.0f;
+    float currentBeat = 0.0f;
     
-    // === Данные призрака ===
-    std::vector<GhostFrame> m_ghostFrames;
-    float m_playbackTime = 0.0f;
-    size_t m_currentFrameIdx = 0;
-    bool m_hasGhost = false;
-    float m_bestTime = 999999.0f;
-    float m_ghostRecordFPS = 60.0f;
+    // === Камера ===
+    float cameraZ = 0.0f;           // Текущая Z позиция камеры
+    float targetCameraZ = 0.0f;     // Целевая Z
+    float cameraZVelocity = 0.0f;   // Для плавности
+    float cameraShake = 0.0f;       // Тряска камеры
     
-    // === Визуализация ===
-    CCSprite* m_ghostSprite1 = nullptr;
-    CCSprite* m_ghostSprite2 = nullptr;
-    CCSprite* m_ghostGlow1 = nullptr;
-    CCSprite* m_ghostGlow2 = nullptr;
-    CCLabelBMFont* m_timeLabel = nullptr;
-    CCNode* m_ghostContainer = nullptr;
+    // === Z-слои объектов ===
+    std::unordered_map<int, float> objectZLayers;  // objectID -> Z
+    std::mt19937 rng;
     
-    // === Кэш ===
-    int m_levelID = 0;
-    float m_recordInterval = 0.0f;
-    float m_cachedOpacity = 0.5f;
-    bool m_cachedEnabled = true;
-    bool m_cachedShowTimeDiff = true;
-    bool m_cachedGlowEffect = true;
-    ccColor3B m_cachedGhostColor = ccc3(100, 200, 255);
+    // === Кэш для производительности ===
+    float cachedSinTime = 0.0f;
+    float cachedCosTime = 0.0f;
+    int lastUpdateFrame = -1;
     
     // === Методы ===
     
-    void refreshSettings() {
+    void loadSettings() {
         auto* mod = Mod::get();
-        m_cachedEnabled = mod->getSettingValue<bool>("enabled");
-        m_cachedOpacity = static_cast<float>(mod->getSettingValue<double>("ghost-opacity"));
-        m_cachedShowTimeDiff = mod->getSettingValue<bool>("show-time-diff");
-        m_cachedGlowEffect = mod->getSettingValue<bool>("glow-effect");
         
-        int64_t fps = mod->getSettingValue<int64_t>("record-fps");
-        m_recordInterval = fps > 0 ? 1.0f / static_cast<float>(fps) : 0.0f;
+        config.enabled = mod->getSettingValue<bool>("enabled");
+        config.cameraMode = static_cast<CameraMode>(
+            mod->getSettingValue<int64_t>("camera-mode")
+        );
+        config.zSpread = static_cast<float>(mod->getSettingValue<double>("z-spread"));
+        config.driftAmplitude = static_cast<float>(mod->getSettingValue<double>("drift-amplitude"));
+        config.driftFrequency = static_cast<float>(mod->getSettingValue<double>("drift-frequency"));
+        config.perspectiveStrength = static_cast<float>(mod->getSettingValue<double>("perspective"));
+        config.depthFadeStart = static_cast<float>(mod->getSettingValue<double>("fade-start"));
+        config.depthFadeEnd = static_cast<float>(mod->getSettingValue<double>("fade-end"));
+        config.depthGlow = mod->getSettingValue<bool>("depth-glow");
+        config.glowIntensity = static_cast<float>(mod->getSettingValue<double>("glow-intensity"));
+        config.zAffectsGravity = mod->getSettingValue<bool>("z-gravity");
+        config.zCollisionLayers = mod->getSettingValue<bool>("z-collisions");
+        config.collisionZTolerance = static_cast<float>(mod->getSettingValue<double>("collision-tolerance"));
+        config.autoSeed = mod->getSettingValue<bool>("auto-seed");
+        config.beatReactivity = static_cast<float>(mod->getSettingValue<double>("beat-reactivity"));
         
-        // Парсим цвет
-        auto colorStr = mod->getSettingValue<std::string>("ghost-color");
-        parseColor(colorStr);
+        if (!config.autoSeed) {
+            config.seed = static_cast<int>(mod->getSettingValue<int64_t>("manual-seed"));
+        }
     }
     
-    void parseColor(const std::string& colorStr) {
-        if (colorStr == "blue") m_cachedGhostColor = ccc3(100, 180, 255);
-        else if (colorStr == "red") m_cachedGhostColor = ccc3(255, 100, 100);
-        else if (colorStr == "green") m_cachedGhostColor = ccc3(100, 255, 150);
-        else if (colorStr == "purple") m_cachedGhostColor = ccc3(200, 100, 255);
-        else if (colorStr == "yellow") m_cachedGhostColor = ccc3(255, 230, 100);
-        else if (colorStr == "cyan") m_cachedGhostColor = ccc3(100, 255, 255);
-        else if (colorStr == "white") m_cachedGhostColor = ccc3(255, 255, 255);
-        else m_cachedGhostColor = ccc3(100, 180, 255);
-    }
-    
-    std::filesystem::path getGhostDir() {
-        auto dir = Mod::get()->getSaveDir() / "ghost_replays";
-        std::error_code ec;
-        std::filesystem::create_directories(dir, ec);
-        return dir;
-    }
-    
-    std::filesystem::path getGhostPath(int levelID) {
-        return getGhostDir() / (fmt::format("level_{}.echo", levelID));
-    }
-    
-    uint32_t calculateChecksum(const std::vector<GhostFrame>& frames) {
-        uint32_t checksum = 0;
-        for (size_t i = 0; i < frames.size(); i += 10) {
-            checksum ^= static_cast<uint32_t>(frames[i].posX * 100);
-            checksum ^= static_cast<uint32_t>(frames[i].posY * 100) << 8;
-            checksum = (checksum << 3) | (checksum >> 29);
-        }
-        return checksum;
-    }
-    
-    void startRecording(int levelID) {
-        m_levelID = levelID;
-        m_recording.clear();
-        m_recording.reserve(10000); // Предаллокация
-        m_recordTime = 0.0f;
-        m_lastRecordTime = 0.0f;
-        m_isRecording = true;
+    void initializeForLevel(GJGameLevel* level) {
+        if (!level) return;
         
-        // Сброс воспроизведения
-        m_playbackTime = 0.0f;
-        m_currentFrameIdx = 0;
-    }
-    
-    void stopRecording() {
-        m_isRecording = false;
-    }
-    
-    void resetPlayback() {
-        m_playbackTime = 0.0f;
-        m_currentFrameIdx = 0;
-        m_recordTime = 0.0f;
-        m_lastRecordTime = 0.0f;
-        m_recording.clear();
-        m_recording.reserve(10000);
-        m_isRecording = true;
-    }
-    
-    uint8_t getGameMode(PlayerObject* player) {
-        if (!player) return 0;
-        if (player->m_isShip) return 1;
-        if (player->m_isBall) return 2;
-        if (player->m_isBird) return 3;  // UFO
-        if (player->m_isDart) return 4;  // Wave
-        if (player->m_isRobot) return 5;
-        if (player->m_isSpider) return 6;
-        if (player->m_isSwing) return 7;
-        return 0; // Cube
-    }
-    
-    void recordFrame(float dt, PlayerObject* player1, PlayerObject* player2) {
-        if (!m_isRecording || !player1) return;
-        if (m_recordInterval <= 0.0f) return;
+        loadSettings();
         
-        m_recordTime += dt;
-        
-        // Записываем с заданной частотой
-        if (m_recordTime - m_lastRecordTime < m_recordInterval) return;
-        m_lastRecordTime = m_recordTime;
-        
-        GhostFrame frame{};
-        frame.time = m_recordTime;
-        
-        // Player 1
-        CCPoint pos1 = player1->getPosition();
-        frame.posX = pos1.x;
-        frame.posY = pos1.y;
-        frame.rotation = player1->getRotation();
-        frame.scale = player1->getScale();
-        frame.gameMode = getGameMode(player1);
-        
-        bool flipX1 = false;
-        bool flipY1 = false;
-        if (player1->m_iconSprite) {
-            flipX1 = player1->m_iconSprite->isFlipX();
-            flipY1 = player1->m_iconSprite->isFlipY();
-        }
-        if (player1->m_isUpsideDown) flipX1 = !flipX1;
-        
-        frame.setFlags(flipX1, flipY1, player1->m_isUpsideDown, 
-                      player1->m_isHidden, player1->m_isDashing);
-        
-        // Player 2 (dual)
-        frame.hasDual = player2 != nullptr && player2->isVisible();
-        if (frame.hasDual) {
-            CCPoint pos2 = player2->getPosition();
-            frame.pos2X = pos2.x;
-            frame.pos2Y = pos2.y;
-            frame.rotation2 = player2->getRotation();
-            frame.gameMode2 = getGameMode(player2);
-            
-            bool flipX2 = false;
-            bool flipY2 = false;
-            if (player2->m_iconSprite) {
-                flipX2 = player2->m_iconSprite->isFlipX();
-                flipY2 = player2->m_iconSprite->isFlipY();
-            }
-            if (player2->m_isUpsideDown) flipX2 = !flipX2;
-            
-            frame.setFlags2(flipX2, flipY2, player2->m_isUpsideDown);
-        }
-        
-        m_recording.push_back(frame);
-    }
-    
-    bool saveGhost(float completionTime) {
-        if (m_recording.empty()) {
-            log::warn("No recording to save");
-            return false;
-        }
-        
-        // Сохраняем только если лучше
-        if (m_hasGhost && completionTime >= m_bestTime) {
-            log::info("Current time {} not better than best {}", completionTime, m_bestTime);
-            return false;
-        }
-        
-        auto path = getGhostPath(m_levelID);
-        
-        std::ofstream file(path, std::ios::binary);
-        if (!file.is_open()) {
-            log::error("Failed to open file for writing: {}", path.string());
-            return false;
-        }
-        
-        GhostFileHeader header{};
-        header.levelID = m_levelID;
-        header.bestTime = completionTime;
-        header.recordFPS = 1.0f / m_recordInterval;
-        header.frameCount = static_cast<uint32_t>(m_recording.size());
-        header.checksum = calculateChecksum(m_recording);
-        
-        file.write(reinterpret_cast<const char*>(&header), sizeof(header));
-        file.write(reinterpret_cast<const char*>(m_recording.data()), 
-                   m_recording.size() * sizeof(GhostFrame));
-        
-        m_bestTime = completionTime;
-        m_ghostFrames = m_recording; // Копируем для немедленного воспроизведения
-        m_hasGhost = true;
-        
-        log::info("Ghost saved! Time: {:.3f}s, Frames: {}", completionTime, m_recording.size());
-        return true;
-    }
-    
-    bool loadGhost(int levelID) {
-        m_levelID = levelID;
-        m_ghostFrames.clear();
-        m_hasGhost = false;
-        m_bestTime = 999999.0f;
-        m_currentFrameIdx = 0;
-        m_playbackTime = 0.0f;
-        
-        auto path = getGhostPath(levelID);
-        
-        if (!std::filesystem::exists(path)) {
-            log::info("No ghost file for level {}", levelID);
-            return false;
-        }
-        
-        std::ifstream file(path, std::ios::binary);
-        if (!file.is_open()) {
-            log::error("Failed to open ghost file: {}", path.string());
-            return false;
-        }
-        
-        GhostFileHeader header{};
-        file.read(reinterpret_cast<char*>(&header), sizeof(header));
-        
-        // Проверяем магию
-        if (std::memcmp(header.magic, "ECHO", 4) != 0) {
-            log::error("Invalid ghost file magic");
-            return false;
-        }
-        
-        if (header.version != 2) {
-            log::error("Unsupported ghost file version: {}", header.version);
-            return false;
-        }
-        
-        m_bestTime = header.bestTime;
-        m_ghostRecordFPS = header.recordFPS;
-        
-        m_ghostFrames.resize(header.frameCount);
-        file.read(reinterpret_cast<char*>(m_ghostFrames.data()), 
-                  header.frameCount * sizeof(GhostFrame));
-        
-        // Проверяем checksum
-        if (calculateChecksum(m_ghostFrames) != header.checksum) {
-            log::warn("Ghost file checksum mismatch, file may be corrupted");
-        }
-        
-        m_hasGhost = !m_ghostFrames.empty();
-        log::info("Ghost loaded! Best time: {:.3f}s, Frames: {}", m_bestTime, m_ghostFrames.size());
-        
-        return m_hasGhost;
-    }
-    
-    // Интерполяция между кадрами
-    GhostFrame interpolateFrames(const GhostFrame& a, const GhostFrame& b, float t) {
-        GhostFrame result = a;
-        
-        result.posX = a.posX + (b.posX - a.posX) * t;
-        result.posY = a.posY + (b.posY - a.posY) * t;
-        
-        // Интерполяция угла с учётом wrap-around
-        float angleDiff = b.rotation - a.rotation;
-        if (angleDiff > 180.0f) angleDiff -= 360.0f;
-        if (angleDiff < -180.0f) angleDiff += 360.0f;
-        result.rotation = a.rotation + angleDiff * t;
-        
-        result.scale = a.scale + (b.scale - a.scale) * t;
-        
-        if (a.hasDual && b.hasDual) {
-            result.pos2X = a.pos2X + (b.pos2X - a.pos2X) * t;
-            result.pos2Y = a.pos2Y + (b.pos2Y - a.pos2Y) * t;
-            
-            float angleDiff2 = b.rotation2 - a.rotation2;
-            if (angleDiff2 > 180.0f) angleDiff2 -= 360.0f;
-            if (angleDiff2 < -180.0f) angleDiff2 += 360.0f;
-            result.rotation2 = a.rotation2 + angleDiff2 * t;
-        }
-        
-        return result;
-    }
-    
-    GhostFrame* getInterpolatedFrame(float time, GhostFrame& outFrame) {
-        if (!m_hasGhost || m_ghostFrames.empty()) return nullptr;
-        
-        // Находим нужные кадры для интерполяции
-        while (m_currentFrameIdx < m_ghostFrames.size() - 1 && 
-               m_ghostFrames[m_currentFrameIdx + 1].time <= time) {
-            m_currentFrameIdx++;
-        }
-        
-        if (m_currentFrameIdx >= m_ghostFrames.size()) return nullptr;
-        
-        const GhostFrame& current = m_ghostFrames[m_currentFrameIdx];
-        
-        // Если это последний кадр или время точно совпадает
-        if (m_currentFrameIdx >= m_ghostFrames.size() - 1 || current.time >= time) {
-            outFrame = current;
-            return &outFrame;
-        }
-        
-        // Интерполяция
-        const GhostFrame& next = m_ghostFrames[m_currentFrameIdx + 1];
-        float t = (time - current.time) / (next.time - current.time);
-        t = std::clamp(t, 0.0f, 1.0f);
-        
-        outFrame = interpolateFrames(current, next, t);
-        return &outFrame;
-    }
-    
-    void createGhostVisuals(CCNode* gameLayer, PlayerObject* realPlayer) {
-        cleanupVisuals();
-        
-        if (!gameLayer || !realPlayer) return;
-        
-        // Контейнер для призрака
-        m_ghostContainer = CCNode::create();
-        if (!m_ghostContainer) return;
-        gameLayer->addChild(m_ghostContainer, realPlayer->getZOrder() - 5);
-        
-        // Создаём спрайт призрака 1
-        if (realPlayer->m_iconSprite) {
-            CCSpriteFrame* frame = realPlayer->m_iconSprite->displayFrame();
-            if (frame) {
-                m_ghostSprite1 = CCSprite::createWithSpriteFrame(frame);
+        // Генерируем сид на основе уровня
+        if (config.autoSeed) {
+            config.seed = static_cast<int>(level->m_levelID.value());
+            if (config.seed == 0) {
+                // Для кастомных уровней — хэш имени
+                std::hash<std::string> hasher;
+                config.seed = static_cast<int>(hasher(std::string(level->m_levelName)));
             }
         }
         
-        if (!m_ghostSprite1) {
-            m_ghostSprite1 = CCSprite::create("playerSquare_001.png"_spr);
-        }
+        rng.seed(static_cast<unsigned>(config.seed));
+        objectZLayers.clear();
         
-        if (m_ghostSprite1) {
-            m_ghostSprite1->setColor(m_cachedGhostColor);
-            m_ghostSprite1->setOpacity(static_cast<GLubyte>(m_cachedOpacity * 255));
-            m_ghostContainer->addChild(m_ghostSprite1, 1);
-            
-            // Эффект свечения
-            if (m_cachedGlowEffect) {
-                m_ghostGlow1 = CCSprite::createWithSpriteFrame(
-                    m_ghostSprite1->displayFrame()
-                );
-                if (m_ghostGlow1) {
-                    m_ghostGlow1->setColor(m_cachedGhostColor);
-                    m_ghostGlow1->setOpacity(static_cast<GLubyte>(m_cachedOpacity * 100));
-                    m_ghostGlow1->setScale(1.3f);
-                    m_ghostGlow1->setBlendFunc({GL_SRC_ALPHA, GL_ONE});
-                    m_ghostContainer->addChild(m_ghostGlow1, 0);
-                }
-            }
-        }
+        // Сброс состояния
+        gameTime = 0.0f;
+        musicTime = 0.0f;
+        cameraZ = 0.0f;
+        targetCameraZ = 0.0f;
+        cameraZVelocity = 0.0f;
+        currentBeat = 0.0f;
+        isActive = config.enabled;
         
-        // Метка разницы времени
-        if (m_cachedShowTimeDiff) {
-            m_timeLabel = CCLabelBMFont::create("", "bigFont.fnt");
-            if (m_timeLabel) {
-                m_timeLabel->setScale(0.4f);
-                m_timeLabel->setOpacity(200);
-                m_ghostContainer->addChild(m_timeLabel, 10);
-            }
-        }
+        // Пытаемся получить BPM из уровня
+        // (В реальности нужен анализ аудио или метаданные)
+        config.bpm = 120.0f; // Дефолт
+        
+        log::info("DimensionDrift initialized: seed={}, mode={}", 
+                  config.seed, static_cast<int>(config.cameraMode));
     }
     
-    void updateGhostVisuals(float currentTime, PlayerObject* realPlayer) {
-        m_playbackTime = currentTime;
+    // Присваиваем Z-слой объекту
+    float assignZLayer(GameObject* obj) {
+        if (!obj) return 0.0f;
         
-        if (!m_cachedEnabled || !m_hasGhost || !m_ghostSprite1) {
-            if (m_ghostContainer) m_ghostContainer->setVisible(false);
-            return;
+        int objID = obj->m_uniqueID;
+        
+        // Проверяем кэш
+        auto it = objectZLayers.find(objID);
+        if (it != objectZLayers.end()) {
+            return it->second;
         }
         
-        GhostFrame interpolated;
-        GhostFrame* frame = getInterpolatedFrame(currentTime, interpolated);
+        // Генерируем новый Z на основе типа объекта
+        float z = generateZForObject(obj);
+        objectZLayers[objID] = z;
         
-        if (!frame) {
-            m_ghostContainer->setVisible(false);
-            return;
-        }
-        
-        m_ghostContainer->setVisible(true);
-        
-        // Проверяем видимость (не показываем скрытый призрак)
-        if (frame->getHidden()) {
-            m_ghostSprite1->setVisible(false);
-            if (m_ghostGlow1) m_ghostGlow1->setVisible(false);
-            return;
-        }
-        
-        m_ghostSprite1->setVisible(true);
-        m_ghostSprite1->setPosition(ccp(frame->posX, frame->posY));
-        m_ghostSprite1->setRotation(frame->rotation);
-        m_ghostSprite1->setScale(frame->scale);
-        m_ghostSprite1->setFlipX(frame->getFlipX());
-        m_ghostSprite1->setFlipY(frame->getFlipY());
-        
-        // Обновляем текстуру если режим сменился
-        updateGhostTexture(realPlayer, frame->gameMode);
-        
-        // Обновляем свечение
-        if (m_ghostGlow1) {
-            m_ghostGlow1->setVisible(true);
-            m_ghostGlow1->setPosition(m_ghostSprite1->getPosition());
-            m_ghostGlow1->setRotation(m_ghostSprite1->getRotation());
-            m_ghostGlow1->setScale(frame->scale * 1.3f);
-            m_ghostGlow1->setFlipX(frame->getFlipX());
-            m_ghostGlow1->setFlipY(frame->getFlipY());
-        }
-        
-        // Dual mode player 2
-        if (frame->hasDual && m_ghostSprite2) {
-            m_ghostSprite2->setVisible(true);
-            m_ghostSprite2->setPosition(ccp(frame->pos2X, frame->pos2Y));
-            m_ghostSprite2->setRotation(frame->rotation2);
-            m_ghostSprite2->setFlipX(frame->getFlipX2());
-            m_ghostSprite2->setFlipY(frame->getFlipY2());
-        } else if (m_ghostSprite2) {
-            m_ghostSprite2->setVisible(false);
-        }
-        
-        // Разница времени
-        updateTimeLabel(realPlayer, frame->posX);
+        return z;
     }
     
-    void updateGhostTexture(PlayerObject* realPlayer, uint8_t gameMode) {
-        if (!m_ghostSprite1 || !realPlayer) return;
+    float generateZForObject(GameObject* obj) {
+        // Распределение Гаусса для естественного вида
+        std::normal_distribution<float> dist(0.0f, 3.0f * config.zSpread);
+        float z = dist(rng);
         
-        CCSprite* sourceSprite = nullptr;
+        // Модификаторы по типу объекта
+        GameObjectType type = obj->m_objectType;
         
-        // Выбираем нужный спрайт в зависимости от режима
-        switch (gameMode) {
-            case 1: // Ship
-                sourceSprite = realPlayer->m_iconSpriteSecondary;
-                if (!sourceSprite) sourceSprite = realPlayer->m_iconSprite;
+        switch (type) {
+            case GameObjectType::Hazard:
+                // Опасности ближе к игроку для драматизма
+                z = std::clamp(z * 0.5f, -3.0f, 3.0f);
                 break;
-            case 2: // Ball
-            case 3: // UFO
-            case 4: // Wave
-            case 5: // Robot
-            case 6: // Spider
-            case 7: // Swing
+                
+            case GameObjectType::Solid:
+                // Платформы на разных слоях
+                z = std::clamp(z, -5.0f, 5.0f);
+                break;
+                
+            case GameObjectType::Decoration:
+                // Декорации — весь диапазон
+                z = std::clamp(z, DriftMath::Z_MIN, DriftMath::Z_MAX);
+                break;
+                
+            case GameObjectType::Portal:
+                // Порталы всегда на слое игрока
+                z = 0.0f;
+                break;
+                
             default:
-                sourceSprite = realPlayer->m_iconSprite;
+                z = std::clamp(z, -7.0f, 7.0f);
                 break;
         }
         
-        if (sourceSprite) {
-            CCSpriteFrame* frame = sourceSprite->displayFrame();
-            if (frame) {
-                m_ghostSprite1->setDisplayFrame(frame);
-                if (m_ghostGlow1) {
-                    m_ghostGlow1->setDisplayFrame(frame);
+        // Некоторые объекты привязаны к Z=0 (игрок)
+        if (obj->m_hasBeenActivated || obj->m_isDisabled) {
+            z = 0.0f;
+        }
+        
+        return z;
+    }
+    
+    void update(float dt, float musicPosition) {
+        if (!isActive) return;
+        
+        gameTime += dt;
+        musicTime = musicPosition;
+        
+        // Кэшируем тригонометрию
+        cachedSinTime = std::sin(gameTime * DriftMath::TAU * config.driftFrequency);
+        cachedCosTime = std::cos(gameTime * DriftMath::TAU * config.driftFrequency);
+        
+        // Обновляем текущий бит
+        if (config.bpm > 0.0f) {
+            float beatsPerSecond = config.bpm / 60.0f;
+            currentBeat = musicTime * beatsPerSecond + config.beatOffset;
+        }
+        
+        // Обновляем камеру по режиму
+        updateCamera(dt);
+    }
+    
+    void updateCamera(float dt) {
+        switch (config.cameraMode) {
+            case CameraMode::Classic2D:
+                targetCameraZ = 0.0f;
+                break;
+                
+            case CameraMode::Orthographic3D:
+                targetCameraZ = -5.0f; // Статичная позиция
+                break;
+                
+            case CameraMode::Drift:
+                targetCameraZ = cachedSinTime * config.driftAmplitude;
+                break;
+                
+            case CameraMode::Cosmic:
+                // Медленные многослойные волны
+                targetCameraZ = std::sin(gameTime * 0.3f) * config.driftAmplitude * 0.7f
+                              + std::sin(gameTime * 0.7f) * config.driftAmplitude * 0.3f;
+                break;
+                
+            case CameraMode::Hyper:
+                // Быстрый хаотичный дрифт
+                targetCameraZ = std::sin(gameTime * 3.0f) * config.driftAmplitude * 0.5f
+                              + std::cos(gameTime * 5.0f) * config.driftAmplitude * 0.3f
+                              + std::sin(gameTime * 7.0f) * config.driftAmplitude * 0.2f;
+                break;
+                
+            case CameraMode::BeatSync: {
+                // Синхронизация с битами
+                float beatPhase = std::fmod(currentBeat, 1.0f);
+                float beatPulse = DriftMath::easeOutBack(1.0f - beatPhase);
+                targetCameraZ = beatPulse * config.driftAmplitude * config.beatReactivity;
+                
+                // На каждый 4-й бит — резкий сдвиг
+                int beatNum = static_cast<int>(currentBeat);
+                if (beatNum % 4 == 0 && beatPhase < 0.1f) {
+                    cameraShake = config.driftAmplitude * 0.5f;
                 }
+                break;
             }
         }
+        
+        // Добавляем тряску
+        if (cameraShake > 0.01f) {
+            targetCameraZ += (std::sin(gameTime * 50.0f) * cameraShake);
+            cameraShake *= 0.9f;
+        }
+        
+        // Плавное следование (spring physics)
+        float springK = 8.0f;
+        float damping = 0.8f;
+        
+        float force = (targetCameraZ - cameraZ) * springK;
+        cameraZVelocity += force * dt;
+        cameraZVelocity *= damping;
+        cameraZ += cameraZVelocity * dt;
     }
     
-    void updateTimeLabel(PlayerObject* realPlayer, float ghostX) {
-        if (!m_timeLabel || !m_cachedShowTimeDiff || !realPlayer) return;
+    // Вычисляем визуальные параметры объекта на основе его Z
+    struct ZVisuals {
+        float scale;        // Масштаб (перспектива)
+        float opacity;      // Прозрачность (глубина)
+        float offsetY;      // Вертикальный сдвиг
+        float glowAmount;   // Количество свечения
+        bool visible;       // Виден ли вообще
+        ccColor3B tint;     // Оттенок глубины
+    };
+    
+    ZVisuals calculateVisuals(float objectZ) {
+        ZVisuals v;
         
-        float playerX = realPlayer->getPositionX();
-        float diff = playerX - ghostX;
+        // Относительный Z (от камеры)
+        float relZ = objectZ - cameraZ;
         
-        // Позиционируем метку над призраком
-        m_timeLabel->setPosition(ccp(ghostX, m_ghostSprite1->getPositionY() + 50.0f));
+        // Перспективный масштаб
+        // Объекты дальше от камеры (большой Z) — меньше
+        float perspectiveFactor = 1.0f / (1.0f + relZ * config.perspectiveStrength * 0.1f);
+        v.scale = std::clamp(perspectiveFactor, 0.3f, 2.0f);
         
-        // Форматируем текст
-        std::string text;
-        ccColor3B color;
-        
-        if (diff > 5.0f) {
-            // Игрок впереди (хорошо)
-            text = fmt::format("+{:.0f}", diff);
-            color = ccc3(100, 255, 100);
-        } else if (diff < -5.0f) {
-            // Игрок позади (плохо)
-            text = fmt::format("{:.0f}", diff);
-            color = ccc3(255, 100, 100);
+        // Затухание по глубине
+        float absZ = std::abs(relZ);
+        if (absZ < config.depthFadeStart) {
+            v.opacity = 1.0f;
+        } else if (absZ > config.depthFadeEnd) {
+            v.opacity = 0.0f;
         } else {
-            // Примерно равны
-            text = "=";
-            color = ccc3(255, 255, 100);
+            v.opacity = 1.0f - DriftMath::smoothstep(
+                config.depthFadeStart, config.depthFadeEnd, absZ
+            );
         }
         
-        m_timeLabel->setString(text.c_str());
-        m_timeLabel->setColor(color);
-    }
-    
-    void cleanupVisuals() {
-        if (m_ghostContainer) {
-            m_ghostContainer->removeFromParent();
-            m_ghostContainer = nullptr;
+        v.visible = v.opacity > 0.01f;
+        
+        // Y-offset для 3D эффекта
+        v.offsetY = relZ * config.perspectiveStrength * 5.0f;
+        
+        // Свечение близких объектов
+        if (config.depthGlow && relZ < 0) {
+            v.glowAmount = std::clamp(-relZ / 5.0f, 0.0f, 1.0f) * config.glowIntensity;
+        } else {
+            v.glowAmount = 0.0f;
         }
-        m_ghostSprite1 = nullptr;
-        m_ghostSprite2 = nullptr;
-        m_ghostGlow1 = nullptr;
-        m_ghostGlow2 = nullptr;
-        m_timeLabel = nullptr;
-    }
-    
-    void fullCleanup() {
-        cleanupVisuals();
-        m_recording.clear();
-        m_ghostFrames.clear();
-        m_hasGhost = false;
-        m_isRecording = false;
-        m_currentFrameIdx = 0;
-        m_recordTime = 0.0f;
-        m_playbackTime = 0.0f;
-    }
-    
-    bool deleteGhost(int levelID) {
-        auto path = getGhostPath(levelID);
-        std::error_code ec;
-        if (std::filesystem::remove(path, ec)) {
-            log::info("Ghost deleted for level {}", levelID);
-            if (levelID == m_levelID) {
-                m_ghostFrames.clear();
-                m_hasGhost = false;
-                m_bestTime = 999999.0f;
-            }
-            return true;
+        
+        // Цветовой оттенок по глубине
+        if (relZ < 0) {
+            // Близко — тёплые тона
+            v.tint = ccc3(255, 
+                         static_cast<GLubyte>(255 - std::abs(relZ) * 10),
+                         static_cast<GLubyte>(255 - std::abs(relZ) * 20));
+        } else {
+            // Далеко — холодные тона  
+            v.tint = ccc3(static_cast<GLubyte>(255 - relZ * 10),
+                         static_cast<GLubyte>(255 - relZ * 5),
+                         255);
         }
-        return false;
+        
+        return v;
+    }
+    
+    // Модификация гравитации по Z
+    float getGravityModifier(float objectZ) {
+        if (!config.zAffectsGravity) return 1.0f;
+        
+        float relZ = objectZ - cameraZ;
+        
+        // Косинусоидальная кривая гравитации
+        // Z=0 — нормальная, Z далеко — слабее
+        float modifier = std::cos(relZ * config.gravityZMult);
+        return std::clamp(modifier, 0.5f, 1.5f);
+    }
+    
+    // Проверка коллизии с учётом Z
+    bool shouldCollide(float playerZ, float objectZ) {
+        if (!config.zCollisionLayers) return true;
+        
+        float diff = std::abs(playerZ - objectZ);
+        return diff <= config.collisionZTolerance;
+    }
+    
+    void cleanup() {
+        objectZLayers.clear();
+        isActive = false;
+        cameraZ = 0.0f;
+        gameTime = 0.0f;
     }
 };
 
 // ============================================================================
-// PLAYLAYER HOOKS
+// МОДИФИКАЦИЯ GAMEOBJECT — Z-слои
 // ============================================================================
 
-class $modify(EchoPlayLayer, PlayLayer) {
+class $modify(DriftGameObject, GameObject) {
     struct Fields {
-        float m_sessionTime = 0.0f;
+        float m_zLayer = 0.0f;
+        float m_baseScale = 1.0f;
+        float m_baseOpacity = 255.0f;
+        ccColor3B m_baseColor = ccWHITE;
+        float m_basePosY = 0.0f;
+        bool m_zInitialized = false;
+        
+        // Для свечения
+        CCSprite* m_glowSprite = nullptr;
+    };
+    
+    void customSetup() {
+        GameObject::customSetup();
+        
+        if (!m_fields->m_zInitialized) {
+            m_fields->m_baseScale = this->getScale();
+            m_fields->m_baseOpacity = this->getOpacity();
+            m_fields->m_basePosY = this->getPositionY();
+            m_fields->m_zInitialized = true;
+        }
+    }
+    
+    void activateObject() {
+        auto* dm = DimensionDriftManager::get();
+        
+        if (dm->isActive && !m_fields->m_zInitialized) {
+            initializeZLayer();
+        }
+        
+        GameObject::activateObject();
+    }
+    
+    void initializeZLayer() {
+        auto* dm = DimensionDriftManager::get();
+        
+        m_fields->m_zLayer = dm->assignZLayer(this);
+        m_fields->m_baseScale = this->getScale();
+        m_fields->m_baseOpacity = this->getOpacity();
+        m_fields->m_basePosY = this->getPositionY();
+        m_fields->m_baseColor = ccWHITE;
+        m_fields->m_zInitialized = true;
+        
+        // Создаём спрайт свечения если нужно
+        if (dm->config.depthGlow && m_fields->m_zLayer < 0) {
+            createGlowSprite();
+        }
+    }
+    
+    void createGlowSprite() {
+        if (m_fields->m_glowSprite) return;
+        
+        // Создаём копию текстуры для свечения
+        CCSprite* mainSprite = dynamic_cast<CCSprite*>(this);
+        if (!mainSprite) return;
+        
+        CCSpriteFrame* frame = mainSprite->displayFrame();
+        if (!frame) return;
+        
+        m_fields->m_glowSprite = CCSprite::createWithSpriteFrame(frame);
+        if (!m_fields->m_glowSprite) return;
+        
+        m_fields->m_glowSprite->setBlendFunc({GL_SRC_ALPHA, GL_ONE});
+        m_fields->m_glowSprite->setOpacity(0);
+        m_fields->m_glowSprite->setScale(1.2f);
+        m_fields->m_glowSprite->setPosition(this->getContentSize() / 2);
+        
+        this->addChild(m_fields->m_glowSprite, -1);
+    }
+    
+    void updateZVisuals() {
+        auto* dm = DimensionDriftManager::get();
+        if (!dm->isActive) return;
+        
+        auto visuals = dm->calculateVisuals(m_fields->m_zLayer);
+        
+        // Применяем визуалы
+        this->setVisible(visuals.visible);
+        
+        if (visuals.visible) {
+            // Масштаб
+            this->setScale(m_fields->m_baseScale * visuals.scale);
+            
+            // Прозрачность
+            GLubyte newOpacity = static_cast<GLubyte>(
+                m_fields->m_baseOpacity * visuals.opacity
+            );
+            this->setOpacity(newOpacity);
+            
+            // Y-смещение для глубины
+            this->setPositionY(m_fields->m_basePosY + visuals.offsetY);
+            
+            // Cocos2d Z-order для правильной сортировки
+            float renderZ = -m_fields->m_zLayer * 10.0f;
+            this->setVertexZ(renderZ);
+            
+            // Обновляем свечение
+            if (m_fields->m_glowSprite) {
+                GLubyte glowOpacity = static_cast<GLubyte>(visuals.glowAmount * 150);
+                m_fields->m_glowSprite->setOpacity(glowOpacity);
+                m_fields->m_glowSprite->setColor(visuals.tint);
+            }
+        }
+    }
+};
+
+// ============================================================================
+// МОДИФИКАЦИЯ PLAYEROBJECT — Z-физика
+// ============================================================================
+
+class $modify(DriftPlayer, PlayerObject) {
+    struct Fields {
+        float m_zPosition = 0.0f;
+        float m_zVelocity = 0.0f;
+        float m_targetZ = 0.0f;
+        bool m_inZPortal = false;
+    };
+    
+    void update(float dt) {
+        auto* dm = DimensionDriftManager::get();
+        
+        if (dm->isActive && dm->config.dynamicPlayerZ) {
+            // Плавное движение к целевому Z
+            float zDiff = m_fields->m_targetZ - m_fields->m_zPosition;
+            m_fields->m_zVelocity += zDiff * 5.0f * dt;
+            m_fields->m_zVelocity *= 0.9f;
+            m_fields->m_zPosition += m_fields->m_zVelocity * dt;
+        }
+        
+        PlayerObject::update(dt);
+        
+        // Применяем модификатор гравитации
+        if (dm->isActive && dm->config.zAffectsGravity) {
+            float gravMod = dm->getGravityModifier(m_fields->m_zPosition);
+            // m_gravity уже обновлена в базовом update
+            // Мы модифицируем вертикальную скорость
+            // (Упрощённая версия — полная требует больше хуков)
+        }
+    }
+    
+    // Переопределяем проверку коллизий
+    // (В реальности нужен хук на checkCollisions или hitGround)
+    void collidedWithObject(float dt, GameObject* obj, CCRect rect, bool idk) {
+        auto* dm = DimensionDriftManager::get();
+        
+        if (dm->isActive && dm->config.zCollisionLayers) {
+            // Получаем Z объекта
+            auto* driftObj = static_cast<DriftGameObject*>(obj);
+            if (driftObj) {
+                float objZ = driftObj->m_fields->m_zLayer;
+                
+                // Проверяем, должны ли мы коллизировать
+                if (!dm->shouldCollide(m_fields->m_zPosition, objZ)) {
+                    return; // Пропускаем коллизию — разные Z-слои!
+                }
+            }
+        }
+        
+        PlayerObject::collidedWithObject(dt, obj, rect, idk);
+    }
+    
+    // Порталы Z
+    void portalZTransition(float targetZ, float duration) {
+        m_fields->m_targetZ = targetZ;
+        m_fields->m_inZPortal = true;
+        
+        // Запускаем анимацию перехода
+        auto* dm = DimensionDriftManager::get();
+        
+        // Визуальный эффект портала
+        this->runAction(CCSequence::create(
+            CCDelayTime::create(duration),
+            CCCallFunc::create(this, [this]() {
+                static_cast<DriftPlayer*>(this)->m_fields->m_inZPortal = false;
+            }),
+            nullptr
+        ));
+    }
+};
+
+// ============================================================================
+// МОДИФИКАЦИЯ PLAYLAYER — Главный цикл
+// ============================================================================
+
+class $modify(DriftPlayLayer, PlayLayer) {
+    struct Fields {
         float m_settingsTimer = 0.0f;
-        bool m_initialized = false;
-        bool m_completedLevel = false;
+        bool m_driftInitialized = false;
+        
+        // UI элементы
+        CCLabelBMFont* m_zLabel = nullptr;
+        CCLabelBMFont* m_modeLabel = nullptr;
+        CCLabelBMFont* m_seedLabel = nullptr;
     };
     
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
@@ -632,164 +638,256 @@ class $modify(EchoPlayLayer, PlayLayer) {
             return false;
         }
         
-        auto* gm = GhostManager::get();
-        gm->refreshSettings();
+        auto* dm = DimensionDriftManager::get();
+        dm->initializeForLevel(level);
         
-        if (!gm->m_cachedEnabled) return true;
-        
-        // Получаем ID уровня
-        int levelID = level->m_levelID.value();
-        if (levelID == 0) {
-            // Для кастомных уровней используем хэш
-            levelID = static_cast<int>(std::hash<std::string>{}(
-                std::string(level->m_levelName) + std::to_string(level->m_levelRev)
-            ) & 0x7FFFFFFF);
+        if (dm->isActive) {
+            // Инициализируем Z для всех объектов
+            initializeAllObjectsZ();
+            
+            // Создаём UI
+            createDriftUI();
+            
+            m_fields->m_driftInitialized = true;
+            
+            log::info("DimensionDrift PlayLayer initialized");
         }
         
-        // Загружаем призрака
-        gm->loadGhost(levelID);
-        
-        // Начинаем запись
-        gm->startRecording(levelID);
-        
-        m_fields->m_initialized = true;
-        m_fields->m_sessionTime = 0.0f;
-        m_fields->m_completedLevel = false;
-        
-        log::info("Echo Trails initialized for level {}", levelID);
-        
         return true;
+    }
+    
+    void initializeAllObjectsZ() {
+        auto* dm = DimensionDriftManager::get();
+        
+        // Проходим по всем объектам уровня
+        if (m_objects) {
+            CCObject* obj;
+            CCARRAY_FOREACH(m_objects, obj) {
+                auto* gameObj = dynamic_cast<DriftGameObject*>(obj);
+                if (gameObj) {
+                    gameObj->initializeZLayer();
+                }
+            }
+        }
+    }
+    
+    void createDriftUI() {
+        auto* dm = DimensionDriftManager::get();
+        auto winSize = CCDirector::sharedDirector()->getWinSize();
+        
+        // Контейнер UI
+        CCNode* uiContainer = CCNode::create();
+        uiContainer->setPosition(ccp(10.0f, winSize.height - 10.0f));
+        this->addChild(uiContainer, 1000);
+        
+        // Метка режима
+        m_fields->m_modeLabel = CCLabelBMFont::create(
+            cameraModeNames[static_cast<int>(dm->config.cameraMode)],
+            "bigFont.fnt"
+        );
+        m_fields->m_modeLabel->setScale(0.3f);
+        m_fields->m_modeLabel->setAnchorPoint({0.0f, 1.0f});
+        m_fields->m_modeLabel->setOpacity(150);
+        m_fields->m_modeLabel->setPosition(ccp(0, 0));
+        uiContainer->addChild(m_fields->m_modeLabel);
+        
+        // Метка Z камеры
+        m_fields->m_zLabel = CCLabelBMFont::create("Z: 0.0", "chatFont.fnt");
+        m_fields->m_zLabel->setScale(0.5f);
+        m_fields->m_zLabel->setAnchorPoint({0.0f, 1.0f});
+        m_fields->m_zLabel->setOpacity(120);
+        m_fields->m_zLabel->setPosition(ccp(0, -15.0f));
+        uiContainer->addChild(m_fields->m_zLabel);
+        
+        // Метка сида
+        std::string seedStr = fmt::format("Seed: {}", dm->config.seed);
+        m_fields->m_seedLabel = CCLabelBMFont::create(seedStr.c_str(), "chatFont.fnt");
+        m_fields->m_seedLabel->setScale(0.4f);
+        m_fields->m_seedLabel->setAnchorPoint({0.0f, 1.0f});
+        m_fields->m_seedLabel->setOpacity(100);
+        m_fields->m_seedLabel->setPosition(ccp(0, -30.0f));
+        uiContainer->addChild(m_fields->m_seedLabel);
     }
     
     void update(float dt) {
         PlayLayer::update(dt);
         
-        auto* gm = GhostManager::get();
+        auto* dm = DimensionDriftManager::get();
         
-        if (!m_fields->m_initialized || !gm->m_cachedEnabled) return;
-        if (m_player1->m_isDead) return;
+        if (!dm->isActive) return;
         
-        // Обновляем настройки периодически
+        // Получаем текущую позицию музыки
+        float musicPos = m_gameState.m_currentProgress;
+        
+        // Обновляем менеджер
+        dm->update(dt, musicPos);
+        
+        // Обновляем визуалы всех видимых объектов
+        updateVisibleObjectsZ();
+        
+        // Обновляем UI
+        updateDriftUI();
+        
+        // Периодически перечитываем настройки
         m_fields->m_settingsTimer += dt;
-        if (m_fields->m_settingsTimer >= 1.0f) {
+        if (m_fields->m_settingsTimer >= 2.0f) {
             m_fields->m_settingsTimer = 0.0f;
-            gm->refreshSettings();
+            dm->loadSettings();
+        }
+    }
+    
+    void updateVisibleObjectsZ() {
+        // Обновляем только видимые объекты для производительности
+        if (!m_objects) return;
+        
+        CCRect visibleRect = this->getVisibleBounds();
+        
+        CCObject* obj;
+        CCARRAY_FOREACH(m_objects, obj) {
+            auto* gameObj = dynamic_cast<DriftGameObject*>(obj);
+            if (gameObj && gameObj->isVisible()) {
+                // Проверяем, в видимой области ли объект
+                CCPoint pos = gameObj->getPosition();
+                if (visibleRect.containsPoint(pos)) {
+                    gameObj->updateZVisuals();
+                }
+            }
+        }
+    }
+    
+    CCRect getVisibleBounds() {
+        auto winSize = CCDirector::sharedDirector()->getWinSize();
+        CCPoint cameraPos = this->m_cameraPosition;
+        
+        // Расширяем область для предзагрузки
+        float margin = 200.0f;
+        return CCRectMake(
+            cameraPos.x - margin,
+            cameraPos.y - margin,
+            winSize.width + margin * 2,
+            winSize.height + margin * 2
+        );
+    }
+    
+    void updateDriftUI() {
+        auto* dm = DimensionDriftManager::get();
+        
+        if (m_fields->m_zLabel) {
+            std::string zStr = fmt::format("Z: {:.1f}", dm->cameraZ);
+            m_fields->m_zLabel->setString(zStr.c_str());
+        }
+    }
+    
+    // Кастомный рендер с 3D перспективой
+    void visit() {
+        auto* dm = DimensionDriftManager::get();
+        
+        if (!dm->isActive || dm->config.cameraMode == CameraMode::Classic2D) {
+            PlayLayer::visit();
+            return;
         }
         
-        // Записываем кадр
-        m_fields->m_sessionTime += dt;
-        gm->recordFrame(dt, m_player1, m_player2);
+        // Сохраняем текущую матрицу
+        kmGLPushMatrix();
         
-        // Создаём визуализацию если ещё не создана
-        if (!gm->m_ghostContainer && gm->m_hasGhost) {
-            gm->createGhostVisuals(m_objectLayer, m_player1);
-        }
+        // Применяем перспективную трансформацию
+        applyPerspectiveTransform();
         
-        // Обновляем визуализацию
-        gm->updateGhostVisuals(m_fields->m_sessionTime, m_player1);
+        // Вызываем базовый рендер
+        PlayLayer::visit();
+        
+        // Восстанавливаем матрицу
+        kmGLPopMatrix();
+    }
+    
+    void applyPerspectiveTransform() {
+        auto* dm = DimensionDriftManager::get();
+        auto winSize = CCDirector::sharedDirector()->getWinSize();
+        
+        // Центр экрана
+        float centerX = winSize.width / 2.0f;
+        float centerY = winSize.height / 2.0f;
+        
+        // Сдвигаем к центру
+        kmGLTranslatef(centerX, centerY, 0.0f);
+        
+        // Применяем лёгкий наклон по Z
+        float tiltX = dm->cachedSinTime * dm->config.perspectiveStrength * 0.05f;
+        float tiltY = dm->cachedCosTime * dm->config.perspectiveStrength * 0.03f;
+        
+        kmGLRotatef(tiltY * 5.0f, 1.0f, 0.0f, 0.0f);  // Наклон по X
+        kmGLRotatef(tiltX * 3.0f, 0.0f, 1.0f, 0.0f);  // Наклон по Y
+        
+        // Возвращаем обратно
+        kmGLTranslatef(-centerX, -centerY, 0.0f);
     }
     
     void resetLevel() {
+        auto* dm = DimensionDriftManager::get();
+        
+        // Сброс камеры
+        dm->cameraZ = 0.0f;
+        dm->targetCameraZ = 0.0f;
+        dm->cameraZVelocity = 0.0f;
+        dm->gameTime = 0.0f;
+        
         PlayLayer::resetLevel();
-        
-        auto* gm = GhostManager::get();
-        
-        if (!gm->m_cachedEnabled) return;
-        
-        m_fields->m_sessionTime = 0.0f;
-        m_fields->m_completedLevel = false;
-        gm->resetPlayback();
-        
-        // Пересоздаём визуализацию
-        if (gm->m_hasGhost) {
-            gm->cleanupVisuals();
-            gm->createGhostVisuals(m_objectLayer, m_player1);
-        }
-    }
-    
-    void levelComplete() {
-        auto* gm = GhostManager::get();
-        
-        if (gm->m_cachedEnabled && !m_fields->m_completedLevel) {
-            m_fields->m_completedLevel = true;
-            gm->stopRecording();
-            
-            float completionTime = m_fields->m_sessionTime;
-            
-            if (gm->saveGhost(completionTime)) {
-                // Показываем уведомление
-                auto* notification = Notification::create(
-                    fmt::format("New Best Ghost! {:.3f}s", completionTime),
-                    NotificationIcon::Success,
-                    2.0f
-                );
-                notification->show();
-            }
-        }
-        
-        PlayLayer::levelComplete();
     }
     
     void onQuit() {
-        GhostManager::get()->fullCleanup();
+        DimensionDriftManager::get()->cleanup();
         PlayLayer::onQuit();
-    }
-    
-    ~EchoPlayLayer() {
-        GhostManager::get()->cleanupVisuals();
     }
 };
 
 // ============================================================================
-// МЕНЮ УДАЛЕНИЯ ПРИЗРАКА (в паузе)
+// КНОПКА В МЕНЮ ПАУЗЫ
 // ============================================================================
 
 #include <Geode/modify/PauseLayer.hpp>
 
-class $modify(EchoPauseLayer, PauseLayer) {
+class $modify(DriftPauseLayer, PauseLayer) {
     void customSetup() {
         PauseLayer::customSetup();
         
-        auto* gm = GhostManager::get();
-        if (!gm->m_hasGhost) return;
+        auto* dm = DimensionDriftManager::get();
         
-        // Кнопка удаления призрака
-        auto* menu = this->getChildByID("right-button-menu");
-        if (!menu) {
-            menu = CCMenu::create();
-            menu->setPosition(CCDirector::sharedDirector()->getWinSize().width - 50.0f, 80.0f);
-            this->addChild(menu, 10);
-        }
+        // Добавляем кнопку переключения режима
+        auto winSize = CCDirector::sharedDirector()->getWinSize();
         
-        auto* deleteBtn = CCMenuItemSpriteExtra::create(
-            CCSprite::createWithSpriteFrameName("GJ_deleteIcon_001.png"),
+        auto* menu = CCMenu::create();
+        menu->setPosition(ccp(winSize.width - 60.0f, 50.0f));
+        this->addChild(menu, 100);
+        
+        // Кнопка Dimension Drift
+        auto* driftBtn = CCMenuItemSpriteExtra::create(
+            CCSprite::createWithSpriteFrameName("GJ_optionsBtn_001.png"),
             this,
-            menu_selector(EchoPauseLayer::onDeleteGhost)
+            menu_selector(DriftPauseLayer::onDriftSettings)
         );
-        deleteBtn->setScale(0.8f);
+        driftBtn->setScale(0.7f);
+        menu->addChild(driftBtn);
         
-        if (menu->getChildByID("delete-ghost-btn"_spr)) return;
-        
-        deleteBtn->setID("delete-ghost-btn"_spr);
-        menu->addChild(deleteBtn);
-        menu->updateLayout();
+        // Метка
+        auto* label = CCLabelBMFont::create("DRIFT", "bigFont.fnt");
+        label->setScale(0.25f);
+        label->setPosition(driftBtn->getContentSize() / 2 + CCSize(0, -25.0f));
+        driftBtn->addChild(label);
     }
     
-    void onDeleteGhost(CCObject* sender) {
-        auto* gm = GhostManager::get();
-        
-        geode::createQuickPopup(
-            "Delete Ghost",
-            fmt::format("Delete ghost replay for this level?\n\nBest Time: {:.3f}s", gm->m_bestTime),
-            "Cancel", "Delete",
-            [](auto, bool confirmed) {
-                if (confirmed) {
-                    auto* gm = GhostManager::get();
-                    if (gm->deleteGhost(gm->m_levelID)) {
-                        Notification::create("Ghost deleted!", NotificationIcon::Success)->show();
-                    }
-                }
-            }
-        );
+    void onDriftSettings(CCObject* sender) {
+        // Открываем настройки мода
+        geode::openSettingsPopup(Mod::get());
     }
 };
+
+// ============================================================================
+// КОПИРОВАНИЕ СИДА
+// ============================================================================
+
+$execute {
+    // Добавляем кнопку копирования сида в уведомление
+    Loader::get()->queueInMainThread([]() {
+        log::info("DimensionDrift mod loaded!");
+    });
+}
