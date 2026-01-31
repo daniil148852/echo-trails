@@ -29,7 +29,19 @@ void GroqAPI::loadSettings() {
     m_temperature = static_cast<float>(mod->getSettingValue<double>("temperature"));
     m_maxTokens = static_cast<int>(mod->getSettingValue<int64_t>("max-tokens"));
     
-    log::info("[GroqAPI] Loaded settings, API key length: {}", m_apiKey.length());
+    // Trim whitespace from API key
+    while (!m_apiKey.empty() && (m_apiKey.front() == ' ' || m_apiKey.front() == '\n' || m_apiKey.front() == '\r')) {
+        m_apiKey.erase(0, 1);
+    }
+    while (!m_apiKey.empty() && (m_apiKey.back() == ' ' || m_apiKey.back() == '\n' || m_apiKey.back() == '\r')) {
+        m_apiKey.pop_back();
+    }
+    
+    log::info("[GroqAPI] Settings loaded");
+    log::info("[GroqAPI] API key length: {}, starts with gsk_: {}", 
+        m_apiKey.length(), 
+        m_apiKey.substr(0, 4) == "gsk_" ? "yes" : "no");
+    log::info("[GroqAPI] Model: {}", m_model);
 }
 
 void GroqAPI::sendMessage(
@@ -37,10 +49,27 @@ void GroqAPI::sendMessage(
     const std::string& systemPrompt,
     GroqCallback callback
 ) {
-    if (!hasApiKey()) {
+    // Validate API key
+    if (m_apiKey.empty()) {
         GroqResponse resp;
         resp.success = false;
-        resp.error = "API key not configured. Go to mod settings.";
+        resp.error = "API key is empty. Please set it in mod settings.";
+        if (callback) callback(resp);
+        return;
+    }
+    
+    if (m_apiKey.length() < 20) {
+        GroqResponse resp;
+        resp.success = false;
+        resp.error = "API key seems too short. Check mod settings.";
+        if (callback) callback(resp);
+        return;
+    }
+    
+    if (m_apiKey.substr(0, 4) != "gsk_") {
+        GroqResponse resp;
+        resp.success = false;
+        resp.error = "API key should start with 'gsk_'. Check mod settings.";
         if (callback) callback(resp);
         return;
     }
@@ -48,43 +77,62 @@ void GroqAPI::sendMessage(
     if (m_isProcessing) {
         GroqResponse resp;
         resp.success = false;
-        resp.error = "Please wait for the previous request to complete.";
+        resp.error = "Please wait for the previous request.";
+        if (callback) callback(resp);
+        return;
+    }
+    
+    if (userMessage.empty()) {
+        GroqResponse resp;
+        resp.success = false;
+        resp.error = "Message cannot be empty.";
         if (callback) callback(resp);
         return;
     }
     
     m_isProcessing = true;
     
-    // Build request body
-    matjson::Value body;
-    body["model"] = m_model;
-    body["temperature"] = m_temperature;
-    body["max_tokens"] = m_maxTokens;
-    body["stream"] = false;
-    
-    matjson::Value messages = matjson::Value::array();
+    // Build JSON manually for reliability
+    std::string messagesJson = "[";
     
     if (!systemPrompt.empty()) {
-        matjson::Value sysMsg;
-        sysMsg["role"] = "system";
-        sysMsg["content"] = systemPrompt;
-        messages.push(sysMsg);
+        messagesJson += "{\"role\":\"system\",\"content\":\"";
+        // Escape special characters
+        for (char c : systemPrompt) {
+            if (c == '"') messagesJson += "\\\"";
+            else if (c == '\\') messagesJson += "\\\\";
+            else if (c == '\n') messagesJson += "\\n";
+            else if (c == '\r') messagesJson += "\\r";
+            else if (c == '\t') messagesJson += "\\t";
+            else messagesJson += c;
+        }
+        messagesJson += "\"},";
     }
     
-    matjson::Value userMsg;
-    userMsg["role"] = "user";
-    userMsg["content"] = userMessage;
-    messages.push(userMsg);
+    messagesJson += "{\"role\":\"user\",\"content\":\"";
+    for (char c : userMessage) {
+        if (c == '"') messagesJson += "\\\"";
+        else if (c == '\\') messagesJson += "\\\\";
+        else if (c == '\n') messagesJson += "\\n";
+        else if (c == '\r') messagesJson += "\\r";
+        else if (c == '\t') messagesJson += "\\t";
+        else messagesJson += c;
+    }
+    messagesJson += "\"}]";
     
-    body["messages"] = messages;
+    std::string bodyStr = fmt::format(
+        R"({{"model":"{}","messages":{},"temperature":{},"max_tokens":{},"stream":false}})",
+        m_model,
+        messagesJson,
+        m_temperature,
+        m_maxTokens
+    );
     
-    std::string bodyStr = body.dump();
-    
-    log::debug("[GroqAPI] Sending request...");
+    log::debug("[GroqAPI] Request body: {}", bodyStr);
     
     auto req = web::WebRequest();
     req.header("Content-Type", "application/json");
-    req.header("Authorization", fmt::format("Bearer {}", m_apiKey));
+    req.header("Authorization", "Bearer " + m_apiKey);
     req.bodyString(bodyStr);
     
     m_listener.bind([this, callback](web::WebTask::Event* e) {
@@ -92,42 +140,67 @@ void GroqAPI::sendMessage(
         
         if (auto res = e->getValue()) {
             GroqResponse resp;
+            int code = res->code();
+            std::string responseStr = res->string().unwrapOr("");
             
-            if (res->ok()) {
-                std::string responseStr = res->string().unwrapOr("");
-                
+            log::debug("[GroqAPI] Response code: {}", code);
+            log::debug("[GroqAPI] Response body: {}", responseStr);
+            
+            if (code == 200) {
                 auto parseResult = matjson::parse(responseStr);
                 if (parseResult.isOk()) {
                     auto json = parseResult.unwrap();
                     
                     if (json.contains("choices")) {
-                        auto choicesResult = json["choices"].asArray();
-                        if (choicesResult.isOk()) {
-                            auto choices = choicesResult.unwrap();
-                            if (!choices.empty()) {
-                                auto& first = choices[0];
-                                if (first.contains("message") && first["message"].contains("content")) {
-                                    resp.content = first["message"]["content"].asString().unwrapOr("");
-                                    resp.success = !resp.content.empty();
+                        auto& choices = json["choices"];
+                        if (choices.isArray()) {
+                            auto arr = choices.asArray();
+                            if (arr.isOk() && !arr.unwrap().empty()) {
+                                auto& first = arr.unwrap()[0];
+                                if (first.contains("message")) {
+                                    auto& msg = first["message"];
+                                    if (msg.contains("content")) {
+                                        resp.content = msg["content"].asString().unwrapOr("");
+                                        resp.success = !resp.content.empty();
+                                    }
                                 }
                             }
                         }
                     }
                     
-                    if (!resp.success && json.contains("error")) {
-                        if (json["error"].contains("message")) {
-                            resp.error = json["error"]["message"].asString().unwrapOr("Unknown error");
-                        }
+                    if (!resp.success) {
+                        resp.error = "Could not parse AI response";
                     }
                 } else {
-                    resp.error = "Failed to parse API response";
+                    resp.error = "JSON parse error";
                 }
+            } else if (code == 401) {
+                resp.error = "Invalid API key (401). Please check your Groq API key in mod settings.";
+                
+                // Try to get more details
+                auto parseResult = matjson::parse(responseStr);
+                if (parseResult.isOk()) {
+                    auto json = parseResult.unwrap();
+                    if (json.contains("error") && json["error"].contains("message")) {
+                        resp.error = json["error"]["message"].asString().unwrapOr(resp.error);
+                    }
+                }
+            } else if (code == 400) {
+                resp.error = "Bad request (400). ";
+                
+                auto parseResult = matjson::parse(responseStr);
+                if (parseResult.isOk()) {
+                    auto json = parseResult.unwrap();
+                    if (json.contains("error") && json["error"].contains("message")) {
+                        resp.error += json["error"]["message"].asString().unwrapOr("Unknown error");
+                    }
+                }
+            } else if (code == 429) {
+                resp.error = "Rate limited (429). Please wait a moment.";
+            } else if (code == 500 || code == 502 || code == 503) {
+                resp.error = fmt::format("Server error ({}). Try again later.", code);
             } else {
-                resp.error = fmt::format("HTTP Error: {}", res->code());
-            }
-            
-            if (!resp.success && resp.error.empty()) {
-                resp.error = "Unknown error occurred";
+                resp.error = fmt::format("HTTP Error: {}", code);
             }
             
             Loader::get()->queueInMainThread([callback, resp]() {
@@ -136,6 +209,15 @@ void GroqAPI::sendMessage(
         } else if (e->isCancelled()) {
             GroqResponse resp;
             resp.error = "Request cancelled";
+            
+            Loader::get()->queueInMainThread([callback, resp]() {
+                if (callback) callback(resp);
+            });
+        } else if (e->getProgress()) {
+            // Still loading, do nothing
+        } else {
+            GroqResponse resp;
+            resp.error = "Network error. Check your internet connection.";
             
             Loader::get()->queueInMainThread([callback, resp]() {
                 if (callback) callback(resp);
