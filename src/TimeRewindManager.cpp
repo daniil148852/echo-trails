@@ -113,7 +113,7 @@ void TimeRewindManager::recordFrame(float dt) {
     m_recordTimer -= m_recordInterval;
     
     FrameState frame{};
-    frame.timestamp = m_playLayer->m_gameState.m_currentProgress;
+    frame.timestamp = m_playLayer->m_gameState.m_levelTime;
     frame.deltaTime = dt;
     
     // Захватываем состояние игрока 1
@@ -125,8 +125,11 @@ void TimeRewindManager::recordFrame(float dt) {
         frame.capturePlayer(m_player2, frame.player2);
     }
     
-    // Камера
-    frame.cameraPosition = m_playLayer->m_cameraPosition;
+    // Камера — используем gameState
+    frame.cameraOffset = ccp(
+        m_playLayer->m_gameState.m_cameraX,
+        m_playLayer->m_gameState.m_cameraY
+    );
     
     // Сохраняем
     m_frameBuffer.push(frame);
@@ -179,7 +182,7 @@ void TimeRewindManager::startRewind() {
     // Приостанавливаем музыку
     auto* fmod = FMODAudioEngine::sharedEngine();
     if (fmod) {
-        fmod->pauseAllMusic();
+        fmod->pauseAllMusic(true);
     }
     
     // Визуальные эффекты
@@ -190,6 +193,11 @@ void TimeRewindManager::startRewind() {
     // Звук отмотки
     if (m_soundEffects) {
         playRewindSound();
+    }
+    
+    // Показываем метку отмотки
+    if (m_rewindLabel) {
+        m_rewindLabel->setVisible(true);
     }
     
     // Обновляем UI
@@ -223,11 +231,6 @@ void TimeRewindManager::updateRewind(float dt) {
         
         if (frame.hasDualPlayer && m_player2) {
             frame.applyToPlayer(m_player2, frame.player2);
-        }
-        
-        // Камера
-        if (m_playLayer) {
-            m_playLayer->m_cameraPosition = frame.cameraPosition;
         }
         
         m_rewindFrameIndex++;
@@ -312,7 +315,7 @@ void TimeRewindManager::createVisuals() {
     
     // Метка оставшихся отмоток
     std::string rewindsText = m_infiniteRewinds ? 
-        "∞" : fmt::format("{}", m_rewindsRemaining);
+        "INF" : fmt::format("{}", m_rewindsRemaining);
     
     m_rewindsLeftLabel = CCLabelBMFont::create(rewindsText.c_str(), "bigFont.fnt");
     m_rewindsLeftLabel->setPosition(ccp(winSize.width - 30.0f, winSize.height - 20.0f));
@@ -346,17 +349,15 @@ void TimeRewindManager::cleanupVisuals() {
     }
     m_rewindLabel = nullptr;
     m_rewindsLeftLabel = nullptr;
-    m_vhsOverlay = nullptr;
     
     RewindVisuals::get()->cleanup();
 }
 
 void TimeRewindManager::playRewindSound() {
-    // Используем встроенный звук GD или кастомный
-    FMODAudioEngine::sharedEngine()->playEffect("rewindSound.ogg"_spr, 1.0f, 1.0f, 0.8f);
+    // Используем встроенный звук GD
+    FMODAudioEngine::sharedEngine()->playEffect("quitSound_01.ogg", 1.0f, 0.8f, 0.5f);
 }
 
 void TimeRewindManager::stopRewindSound() {
-    // FMODAudioEngine не имеет простого способа остановить конкретный эффект
-    // В реальной реализации нужно хранить FMOD::Channel*
+    // FMOD не имеет простого способа остановить конкретный эффект
 }
