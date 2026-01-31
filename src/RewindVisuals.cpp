@@ -27,6 +27,7 @@ bool RewindVisuals::init() {
     m_glitchTimer = 0.0f;
     m_scanlineOffset = 0.0f;
     m_labelPulseTimer = 0.0f;
+    m_vhsIntensity = 0.0f;
     m_effectsEnabled = true;
     m_isShowingOverlay = false;
     
@@ -51,7 +52,7 @@ RewindVisuals* RewindVisuals::get() {
 
 void RewindVisuals::destroy() {
     if (s_instance) {
-        s_instance->cleanup();
+        s_instance->cleanupVisuals();
         s_instance->release();
         s_instance = nullptr;
     }
@@ -99,7 +100,7 @@ void RewindVisuals::createChargesDisplay(PlayLayer* playLayer) {
 void RewindVisuals::updateChargesDisplay(int charges, int maxCharges) {
     if (!m_chargesLabel) return;
     
-    // Format: "⏪ 3/3" or "REWIND: 3/3"
+    // Format: "REWIND: 3/3"
     std::string text = fmt::format("REWIND: {}/{}", charges, maxCharges);
     m_chargesLabel->setString(text.c_str());
     
@@ -123,6 +124,7 @@ void RewindVisuals::showRewindOverlay(PlayLayer* playLayer) {
     if (!playLayer || m_isShowingOverlay) return;
     
     m_isShowingOverlay = true;
+    m_vhsIntensity = 0.5f;
     
     auto winSize = CCDirector::sharedDirector()->getWinSize();
     
@@ -155,11 +157,13 @@ void RewindVisuals::showRewindOverlay(PlayLayer* playLayer) {
     
     // Animate entrance
     m_overlayContainer->setScale(1.1f);
-    m_overlayContainer->setOpacity(0);
+    m_dimLayer->setOpacity(0);
     
     auto scaleAction = CCEaseOut::create(CCScaleTo::create(0.15f, 1.0f), 2.0f);
-    auto fadeAction = CCFadeIn::create(0.15f);
-    m_overlayContainer->runAction(CCSpawn::create(scaleAction, fadeAction, nullptr));
+    auto fadeAction = CCFadeTo::create(0.15f, 100);
+    
+    m_overlayContainer->runAction(scaleAction);
+    m_dimLayer->runAction(fadeAction);
     
     log::debug("[RewindVisuals] Showing overlay");
 }
@@ -169,13 +173,18 @@ void RewindVisuals::hideRewindOverlay(PlayLayer* playLayer) {
     
     m_isShowingOverlay = false;
     
-    // Animate exit
-    auto fadeAction = CCFadeOut::create(0.2f);
+    // Animate exit and remove
+    auto fadeAction = CCFadeTo::create(0.2f, 0);
     auto scaleAction = CCScaleTo::create(0.2f, 0.9f);
     auto removeAction = CCRemoveSelf::create();
     
+    if (m_dimLayer) {
+        m_dimLayer->runAction(fadeAction);
+    }
+    
     m_overlayContainer->runAction(CCSequence::create(
-        CCSpawn::create(fadeAction, scaleAction, nullptr),
+        scaleAction,
+        CCDelayTime::create(0.1f),
         removeAction,
         nullptr
     ));
@@ -210,9 +219,10 @@ void RewindVisuals::updateRewindProgress(float progress) {
     }
     
     // Intensify VHS effect as rewind progresses
-    if (m_vhsEffectContainer && m_effectsEnabled) {
-        float intensity = 0.5f + progress * 0.5f;
-        m_vhsEffectContainer->setOpacity(static_cast<GLubyte>(intensity * 180));
+    m_vhsIntensity = 0.5f + progress * 0.5f;
+    
+    if (m_staticNoise && m_effectsEnabled) {
+        m_staticNoise->setOpacity(static_cast<GLubyte>(m_vhsIntensity * 30));
     }
 }
 
@@ -379,7 +389,7 @@ void RewindVisuals::updateLabelPulse(float dt) {
 // Cleanup
 // ============================================================
 
-void RewindVisuals::cleanup() {
+void RewindVisuals::cleanupVisuals() {
     // Remove overlay if showing
     if (m_overlayContainer) {
         m_overlayContainer->removeFromParent();
