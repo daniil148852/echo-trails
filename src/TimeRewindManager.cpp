@@ -149,11 +149,13 @@ PlayerFrameState TimeRewindManager::capturePlayerState(PlayerObject* player) {
     // State flags
     state.isUpsideDown = player->m_isUpsideDown;
     state.isOnGround = player->m_isOnGround;
-    state.isHolding = player->m_isHolding;
     state.isDashing = player->m_isDashing;
     state.isSliding = player->m_isSliding;
-    state.isRising = player->m_isRising;
-    state.isFalling = !player->m_isRising && !player->m_isOnGround;
+    
+    // Calculate rising/falling from velocity
+    state.isRising = player->m_yVelocity > 0.0 && !player->m_isOnGround;
+    state.isFalling = player->m_yVelocity < 0.0 && !player->m_isOnGround;
+    
     state.isDead = player->m_isDead;
     state.isVisible = player->isVisible();
     state.isLocked = player->m_isLocked;
@@ -174,8 +176,8 @@ PlayerFrameState TimeRewindManager::capturePlayerState(PlayerObject* player) {
     // Size
     state.isMini = player->m_vehicleSize == 0.6f;
     
-    // Trail/effects
-    state.hasGhostTrail = player->m_hasGhostTrail;
+    // Trail state - check if ghost trail pointer exists
+    state.hasGhostTrail = player->m_ghostTrail != nullptr;
     
     return state;
 }
@@ -218,7 +220,6 @@ FrameState TimeRewindManager::captureGameState(PlayLayer* playLayer) {
     // Level state
     state.isDualMode = playLayer->m_gameState.m_isDualMode;
     state.isPlatformer = playLayer->m_isPlatformer;
-    state.isMirrored = playLayer->m_gameState.m_mirrorMode;
     state.gameSpeed = playLayer->m_gameState.m_timeModRelated;
     
     return state;
@@ -460,10 +461,6 @@ void TimeRewindManager::applyPlayerState(PlayerObject* player, const PlayerFrame
     player->m_isOnGround = state.isOnGround;
     player->m_isDashing = state.isDashing;
     player->m_isSliding = state.isSliding;
-    player->m_isRising = state.isRising;
-    
-    // Don't restore holding state - player should re-input
-    player->m_isHolding = false;
     
     // Ensure player is alive
     player->m_isDead = false;
