@@ -1,59 +1,61 @@
 {
     "geode": "4.10.2",
     "gd": {
-        "android": "2.2074",
-        "win": "2.2074"
+        "win": "2.2074",
+        "android": "2.2074"
     },
-    "id": "developer.time-rewind",
+    "id": "yourname.timerewind",
     "name": "Time Rewind",
     "version": "v1.0.0",
-    "developer": "Developer",
-    "description": "Rewind time when you die! Get a second chance with visual rewind effects.",
+    "developer": "YourName",
+    "description": "Rewind time when you die instead of restarting! Limited charges per attempt.",
     "tags": ["gameplay", "enhancement", "utility"],
     "settings": {
-        "rewind-charges": {
+        "enabled": {
+            "name": "Enable Time Rewind",
+            "description": "Toggle the time rewind feature",
+            "type": "bool",
+            "default": true
+        },
+        "max-charges": {
+            "name": "Max Rewind Charges",
+            "description": "Number of rewinds available per attempt",
             "type": "int",
             "default": 3,
             "min": 1,
-            "max": 10,
-            "name": "Rewind Charges",
-            "description": "Number of rewinds per attempt"
+            "max": 10
         },
         "rewind-duration": {
-            "type": "float",
-            "default": 2.0,
-            "min": 0.5,
-            "max": 5.0,
             "name": "Rewind Duration (seconds)",
-            "description": "How far back to rewind"
+            "description": "How many seconds to rewind",
+            "type": "float",
+            "default": 3.0,
+            "min": 1.0,
+            "max": 10.0
         },
         "rewind-speed": {
+            "name": "Rewind Speed",
+            "description": "Speed multiplier for rewind animation",
             "type": "float",
             "default": 2.0,
             "min": 1.0,
-            "max": 4.0,
-            "name": "Rewind Speed Multiplier",
-            "description": "How fast the rewind animation plays"
+            "max": 5.0
         },
-        "record-fps": {
-            "type": "int",
-            "default": 60,
-            "min": 30,
-            "max": 240,
-            "name": "Recording FPS",
-            "description": "State recording frequency"
-        },
-        "vhs-effect": {
+        "visual-effects": {
+            "name": "Visual Effects",
+            "description": "Enable VHS/glitch effects during rewind",
             "type": "bool",
-            "default": true,
-            "name": "VHS Effect",
-            "description": "Enable VHS glitch effect during rewind"
+            "default": true
         },
-        "grayscale-effect": {
+        "audio-sync": {
+            "name": "Audio Sync",
+            "description": "Sync music position during rewind",
             "type": "bool",
-            "default": true,
-            "name": "Grayscale Effect",
-            "description": "Enable grayscale filter during rewind"
+            "default": true
         }
+    },
+    "dependencies": [],
+    "resources": {
+        "spritesheets": {}
     }
 }
