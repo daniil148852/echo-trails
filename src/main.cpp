@@ -142,7 +142,7 @@ class $modify(TimeRewindPlayLayer, PlayLayer) {
         log::info("[TimeRewind] Exiting level, cleaning up...");
         
         // Clean up visuals
-        RewindVisuals::get()->cleanup();
+        RewindVisuals::get()->cleanupVisuals();
         
         // Reset manager state
         TimeRewindManager::get()->reset();
@@ -162,7 +162,7 @@ class $modify(TimeRewindPlayLayer, PlayLayer) {
         }
         
         manager->reset();
-        RewindVisuals::get()->cleanup();
+        RewindVisuals::get()->cleanupVisuals();
         
         PlayLayer::levelComplete();
     }
@@ -300,7 +300,7 @@ class $modify(TimeRewindEndLevel, EndLevelLayer) {
         EndLevelLayer::customSetup();
         
         // Clean up rewind system
-        RewindVisuals::get()->cleanup();
+        RewindVisuals::get()->cleanupVisuals();
         TimeRewindManager::get()->reset();
     }
 };
@@ -354,17 +354,4 @@ $on_mod(Loaded) {
     });
     
     log::info("[TimeRewind] Initialization complete!");
-}
-
-$on_mod(Unloaded) {
-    log::info("[TimeRewind] Mod unloading, cleaning up...");
-    
-    // Save settings
-    TimeRewindManager::get()->saveSettings();
-    
-    // Clean up
-    RewindVisuals::destroy();
-    TimeRewindManager::destroy();
-    
-    log::info("[TimeRewind] Cleanup complete, goodbye!");
 }
