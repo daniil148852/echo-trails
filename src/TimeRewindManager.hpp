@@ -26,11 +26,10 @@ struct PlayerFrameState {
     // State flags
     bool isUpsideDown = false;
     bool isOnGround = false;
-    bool isHolding = false;
     bool isDashing = false;
     bool isSliding = false;
-    bool isRising = false;
-    bool isFalling = false;
+    bool isRising = false;  // Calculated from velocity
+    bool isFalling = false; // Calculated from velocity
     bool isDead = false;
     bool isVisible = true;
     bool isLocked = false;
@@ -45,23 +44,12 @@ struct PlayerFrameState {
     bool isSpider = false;
     bool isSwing = false;
     
-    // Robot/Spider animation state
-    int robotAnimState = 0;
-    int spiderAnimState = 0;
-    
-    // Trail state
-    bool hasGhostTrail = false;
-    bool hasRegularTrail = false;
-    
-    // Particle state
-    bool particlesVisible = false;
-    
-    // Jetpack (for ship mode)
-    bool hasJetpack = false;
-    
     // Size
     bool isMini = false;
     bool isDualMode = false;
+    
+    // Trail state
+    bool hasGhostTrail = false;
     
     PlayerFrameState() = default;
 };
@@ -88,7 +76,6 @@ struct FrameState {
     // Level state
     bool isDualMode = false;
     bool isPlatformer = false;
-    bool isMirrored = false;
     float gameSpeed = 1.0f;
     
     // Checkpoints (for platformer)
@@ -165,104 +152,36 @@ public:
     
     // ==================== Lifecycle ====================
     
-    /**
-     * @brief Initialize the manager for a new level attempt
-     */
     void initialize(PlayLayer* playLayer);
-    
-    /**
-     * @brief Reset all state (called on level reset)
-     */
     void reset();
-    
-    /**
-     * @brief Clean up resources
-     */
     void cleanup();
     
     // ==================== Recording ====================
     
-    /**
-     * @brief Check if it's time to record a frame
-     */
     bool shouldRecordFrame(float deltaTime);
-    
-    /**
-     * @brief Record the current game state
-     */
     void recordFrame(PlayLayer* playLayer);
-    
-    /**
-     * @brief Capture complete state of a player
-     */
     PlayerFrameState capturePlayerState(PlayerObject* player);
-    
-    /**
-     * @brief Capture complete game state
-     */
     FrameState captureGameState(PlayLayer* playLayer);
     
     // ==================== Rewind ====================
     
-    /**
-     * @brief Check if rewind is possible
-     */
     bool canRewind() const;
-    
-    /**
-     * @brief Start the rewind sequence
-     * @return true if rewind started successfully
-     */
     bool startRewind(PlayLayer* playLayer);
-    
-    /**
-     * @brief Update the rewind animation
-     */
     void updateRewind(PlayLayer* playLayer, float deltaTime);
-    
-    /**
-     * @brief Finish the rewind and resume gameplay
-     */
     void finishRewind(PlayLayer* playLayer);
-    
-    /**
-     * @brief Cancel an active rewind
-     */
     void cancelRewind(PlayLayer* playLayer);
     
     // ==================== State Application ====================
     
-    /**
-     * @brief Apply a complete frame state to the game
-     */
     void applyFrameState(PlayLayer* playLayer, const FrameState& state);
-    
-    /**
-     * @brief Apply player state to a PlayerObject
-     */
     void applyPlayerState(PlayerObject* player, const PlayerFrameState& state);
-    
-    /**
-     * @brief Interpolate between two frame states
-     */
     FrameState interpolateFrames(const FrameState& from, const FrameState& to, float t);
-    
-    /**
-     * @brief Interpolate between two player states
-     */
     PlayerFrameState interpolatePlayerStates(const PlayerFrameState& from, 
                                               const PlayerFrameState& to, float t);
     
     // ==================== Audio Sync ====================
     
-    /**
-     * @brief Sync the music position to the given time
-     */
     void syncMusicTime(double timeMS);
-    
-    /**
-     * @brief Pause/resume music
-     */
     void setMusicPaused(bool paused);
     
     // ==================== Getters/Setters ====================
@@ -308,13 +227,6 @@ public:
     
     // ==================== Settings Sync ====================
     
-    /**
-     * @brief Load settings from mod config
-     */
     void loadSettings();
-    
-    /**
-     * @brief Save settings to mod config
-     */
     void saveSettings();
 };
