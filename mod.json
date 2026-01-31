@@ -1,57 +1,77 @@
 {
-	"geode": "4.10.2",
-	"gd": {
-		"win": "2.2074",
-		"android": "2.2074"
-	},
-	"id": "yourname.dimension_drift",
-	"version": "1.0.0",
-	"name": "Dimension Drift",
-	"developer": "YourName",
-	"description": "Добавляет эффект псевдо-3D, распределяя объекты уровня по Z-слоям и заставляя камеру дрейфовать.",
-	"settings": {
-		"enabled": {
-			"name": "Включить мод",
-			"type": "bool",
-			"default": true
-		},
-		"camera-mode": {
-			"name": "Режим камеры",
-			"type": "enum",
-			"default": 2,
-			"values": [
-				"Classic 2D",
-				"Ortho 3D",
-				"Drift",
-				"Beat Sync"
-			]
-		},
-		"z-spread": {
-			"name": "Разброс глубины (Z)",
-			"description": "Насколько сильно объекты будут разлетаться по слоям.",
-			"type": "float",
-			"default": 1.0,
-			"min": 0.1,
-			"max": 5.0,
-			"control": "slider"
-		},
-		"drift-amplitude": {
-			"name": "Амплитуда дрейфа",
-			"description": "Сила раскачивания камеры.",
-			"type": "float",
-			"default": 5.0,
-			"min": 0.0,
-			"max": 20.0,
-			"control": "slider"
-		},
-		"drift-frequency": {
-			"name": "Частота дрейфа",
-			"description": "Скорость раскачивания камеры.",
-			"type": "float",
-			"default": 0.5,
-			"min": 0.1,
-			"max": 5.0,
-			"control": "slider"
-		}
-	}
+    "geode": "4.10.2",
+    "gd": {
+        "win": "2.2074",
+        "android": "2.2074"
+    },
+    "id": "developer.time-rewind",
+    "name": "Time Rewind",
+    "version": "v1.0.0",
+    "developer": "Developer",
+    "description": "⏪ Rewind time when you die! Instead of restarting, the game rewinds a few seconds like a VHS tape, letting you try again from that point. Limited rewinds per attempt for balanced gameplay.",
+    "repository": "",
+    "tags": ["gameplay", "enhancement", "challenge"],
+    "resources": {
+        "files": [
+            "resources/rewindSound.ogg"
+        ]
+    },
+    "settings": {
+        "enabled": {
+            "type": "bool",
+            "default": true,
+            "name": "⏪ Enable Time Rewind",
+            "description": "Master toggle for the time rewind feature."
+        },
+        "rewind-duration": {
+            "type": "float",
+            "default": 2.0,
+            "name": "⏱️ Rewind Duration",
+            "description": "How many seconds to rewind when you die.",
+            "min": 0.5,
+            "max": 5.0
+        },
+        "rewind-speed": {
+            "type": "float",
+            "default": 2.0,
+            "name": "⚡ Rewind Speed",
+            "description": "Playback speed of the rewind animation (1.0 = real-time, 2.0 = 2x faster).",
+            "min": 0.5,
+            "max": 5.0
+        },
+        "max-rewinds": {
+            "type": "int",
+            "default": 3,
+            "name": "🔢 Max Rewinds Per Attempt",
+            "description": "Number of rewinds allowed before normal death. Resets on level restart.",
+            "min": 1,
+            "max": 10
+        },
+        "infinite-rewinds": {
+            "type": "bool",
+            "default": false,
+            "name": "∞ Infinite Rewinds",
+            "description": "Allow unlimited rewinds (practice mode style)."
+        },
+        "record-fps": {
+            "type": "int",
+            "default": 60,
+            "name": "📹 Recording FPS",
+            "description": "Frames per second for state recording. Higher = smoother rewind, more memory.",
+            "min": 30,
+            "max": 120
+        },
+        "visual-effects": {
+            "type": "bool",
+            "default": true,
+            "name": "📺 VHS Visual Effects",
+            "description": "Show retro VHS-style visual effects during rewind."
+        },
+        "sound-effects": {
+            "type": "bool",
+            "default": true,
+            "name": "🔊 Rewind Sound",
+            "description": "Play tape rewind sound effect."
+        }
+    }
 }
