@@ -2,6 +2,7 @@
 #include <Geode/modify/PlayLayer.hpp>
 #include <Geode/modify/PlayerObject.hpp>
 #include <Geode/modify/PauseLayer.hpp>
+#include <Geode/ui/GeodeUI.hpp>
 #include "TimeRewindManager.hpp"
 
 using namespace geode::prelude;
@@ -25,18 +26,13 @@ class $modify(RewindPlayLayer, PlayLayer) {
     void update(float dt) {
         auto* manager = TimeRewindManager::get();
         
-        // Если идёт отмотка — не вызываем базовый update
         if (manager->isRewinding()) {
             manager->update(dt);
-            
-            // Обновляем только необходимые визуалы
             this->updateVisibility(dt);
             return;
         }
         
         PlayLayer::update(dt);
-        
-        // Записываем кадр
         manager->update(dt);
     }
     
@@ -51,7 +47,6 @@ class $modify(RewindPlayLayer, PlayLayer) {
     }
     
     void levelComplete() {
-        // При завершении уровня отключаем отмотку
         TimeRewindManager::get()->cleanup();
         PlayLayer::levelComplete();
     }
@@ -59,19 +54,17 @@ class $modify(RewindPlayLayer, PlayLayer) {
     void destroyPlayer(PlayerObject* player, GameObject* obj) {
         auto* manager = TimeRewindManager::get();
         
-        // Если можем отмотать — делаем это вместо смерти
         if (manager->canRewind()) {
             manager->startRewind();
-            return; // Не вызываем базовый destroyPlayer!
+            return;
         }
         
-        // Иначе — обычная смерть
         PlayLayer::destroyPlayer(player, obj);
     }
 };
 
 // ============================================================================
-// PLAYEROBJECT HOOKS (для дополнительного контроля)
+// PLAYEROBJECT HOOKS
 // ============================================================================
 
 class $modify(RewindPlayerObject, PlayerObject) {
@@ -79,14 +72,11 @@ class $modify(RewindPlayerObject, PlayerObject) {
     void playerDestroyed(bool p0) {
         auto* manager = TimeRewindManager::get();
         
-        // Если идёт отмотка — игнорируем смерть
         if (manager->isRewinding()) {
             return;
         }
         
-        // Проверяем можем ли отмотать
         if (manager->canRewind()) {
-            // Не вызываем базовый метод — отмотка запустится в destroyPlayer
             return;
         }
         
@@ -95,7 +85,7 @@ class $modify(RewindPlayerObject, PlayerObject) {
 };
 
 // ============================================================================
-// PAUSE LAYER — кнопка настроек
+// PAUSE LAYER
 // ============================================================================
 
 class $modify(RewindPauseLayer, PauseLayer) {
@@ -108,7 +98,6 @@ class $modify(RewindPauseLayer, PauseLayer) {
         
         auto winSize = CCDirector::sharedDirector()->getWinSize();
         
-        // Информация об отмотках
         std::string info = manager->m_infiniteRewinds ?
             "Rewinds: INF" :
             fmt::format("Rewinds left: {}", manager->m_rewindsRemaining);
@@ -119,7 +108,6 @@ class $modify(RewindPauseLayer, PauseLayer) {
         infoLabel->setColor(ccc3(100, 200, 255));
         this->addChild(infoLabel, 100);
         
-        // Кнопка настроек мода
         auto* menu = CCMenu::create();
         menu->setPosition(CCPointZero);
         this->addChild(menu, 100);
@@ -133,7 +121,6 @@ class $modify(RewindPauseLayer, PauseLayer) {
         settingsBtn->setScale(0.6f);
         menu->addChild(settingsBtn);
         
-        // Подпись
         auto* btnLabel = CCLabelBMFont::create("REWIND", "bigFont.fnt");
         btnLabel->setPosition(ccp(settingsBtn->getContentSize().width / 2, -15.0f));
         btnLabel->setScale(0.3f);
@@ -141,7 +128,6 @@ class $modify(RewindPauseLayer, PauseLayer) {
     }
     
     void onRewindSettings(CCObject* sender) {
-        // Открываем настройки мода через Geode API
-        openSettingsPopup(Mod::get());
+        geode::openSettingsPopup(Mod::get());
     }
 };
