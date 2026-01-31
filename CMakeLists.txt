@@ -16,7 +16,6 @@ add_library(${PROJECT_NAME} SHARED
     src/main.cpp
     src/TimeRewindManager.cpp
     src/RewindVisuals.cpp
-    src/Hooks.cpp
 )
 
 # ========== GEODE SDK ==========
