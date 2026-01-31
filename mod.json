@@ -8,25 +8,20 @@
     "name": "Time Rewind",
     "version": "v1.0.0",
     "developer": "Developer",
-    "description": "⏪ Rewind time when you die! Instead of restarting, the game rewinds a few seconds like a VHS tape, letting you try again from that point. Limited rewinds per attempt for balanced gameplay.",
+    "description": "Rewind time when you die! Instead of restarting, the game rewinds a few seconds like a VHS tape.",
     "repository": "",
-    "tags": ["gameplay", "enhancement", "challenge"],
-    "resources": {
-        "files": [
-            "resources/rewindSound.ogg"
-        ]
-    },
+    "tags": ["gameplay", "enhancement"],
     "settings": {
         "enabled": {
             "type": "bool",
             "default": true,
-            "name": "⏪ Enable Time Rewind",
+            "name": "Enable Time Rewind",
             "description": "Master toggle for the time rewind feature."
         },
         "rewind-duration": {
             "type": "float",
             "default": 2.0,
-            "name": "⏱️ Rewind Duration",
+            "name": "Rewind Duration",
             "description": "How many seconds to rewind when you die.",
             "min": 0.5,
             "max": 5.0
@@ -34,44 +29,44 @@
         "rewind-speed": {
             "type": "float",
             "default": 2.0,
-            "name": "⚡ Rewind Speed",
-            "description": "Playback speed of the rewind animation (1.0 = real-time, 2.0 = 2x faster).",
+            "name": "Rewind Speed",
+            "description": "Playback speed of the rewind animation.",
             "min": 0.5,
             "max": 5.0
         },
         "max-rewinds": {
             "type": "int",
             "default": 3,
-            "name": "🔢 Max Rewinds Per Attempt",
-            "description": "Number of rewinds allowed before normal death. Resets on level restart.",
+            "name": "Max Rewinds Per Attempt",
+            "description": "Number of rewinds allowed before normal death.",
             "min": 1,
             "max": 10
         },
         "infinite-rewinds": {
             "type": "bool",
             "default": false,
-            "name": "∞ Infinite Rewinds",
-            "description": "Allow unlimited rewinds (practice mode style)."
+            "name": "Infinite Rewinds",
+            "description": "Allow unlimited rewinds."
         },
         "record-fps": {
             "type": "int",
             "default": 60,
-            "name": "📹 Recording FPS",
-            "description": "Frames per second for state recording. Higher = smoother rewind, more memory.",
+            "name": "Recording FPS",
+            "description": "Frames per second for state recording.",
             "min": 30,
             "max": 120
         },
         "visual-effects": {
             "type": "bool",
             "default": true,
-            "name": "📺 VHS Visual Effects",
-            "description": "Show retro VHS-style visual effects during rewind."
+            "name": "VHS Visual Effects",
+            "description": "Show retro VHS-style effects during rewind."
         },
         "sound-effects": {
             "type": "bool",
             "default": true,
-            "name": "🔊 Rewind Sound",
-            "description": "Play tape rewind sound effect."
+            "name": "Rewind Sound",
+            "description": "Play sound effect during rewind."
         }
     }
 }
