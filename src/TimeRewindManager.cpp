@@ -18,10 +18,8 @@ void TimeRewindManager::loadSettings() {
     m_soundEffects = mod->getSettingValue<bool>("sound-effects");
     m_infiniteRewinds = mod->getSettingValue<bool>("infinite-rewinds");
     
-    // Вычисляем интервалы
     m_recordInterval = 1.0f / m_recordFPS;
     
-    // Размер буфера = FPS * секунды * запас
     size_t bufferSize = static_cast<size_t>(m_recordFPS * m_rewindDuration * 1.5f);
     m_frameBuffer.resize(std::max(bufferSize, size_t(60)));
 }
@@ -75,10 +73,9 @@ void TimeRewindManager::reset() {
         m_state = RewindState::Recording;
     }
     
-    // Обновляем UI
     if (m_rewindsLeftLabel) {
         std::string text = m_infiniteRewinds ? 
-            "∞" : fmt::format("{}", m_rewindsRemaining);
+            "INF" : fmt::format("{}", m_rewindsRemaining);
         m_rewindsLeftLabel->setString(text.c_str());
     }
 }
@@ -125,12 +122,6 @@ void TimeRewindManager::recordFrame(float dt) {
         frame.capturePlayer(m_player2, frame.player2);
     }
     
-    // Камера — используем gameState
-    frame.cameraOffset = ccp(
-        m_playLayer->m_gameState.m_cameraX,
-        m_playLayer->m_gameState.m_cameraY
-    );
-    
     // Сохраняем
     m_frameBuffer.push(frame);
 }
@@ -153,12 +144,10 @@ void TimeRewindManager::startRewind() {
     
     log::info("TimeRewind: Starting rewind with {} frames", m_frameBuffer.size());
     
-    // Уменьшаем счётчик
     if (!m_infiniteRewinds) {
         m_rewindsRemaining--;
     }
     
-    // Готовим кадры для воспроизведения
     size_t framesToRewind = static_cast<size_t>(m_rewindDuration * m_recordFPS);
     m_rewindFrames = m_frameBuffer.getRewindFrames(framesToRewind);
     
@@ -173,37 +162,31 @@ void TimeRewindManager::startRewind() {
     
     m_state = RewindState::Rewinding;
     
-    // Отменяем смерть игрока
     if (m_player1) {
         m_player1->m_isDead = false;
         m_player1->setVisible(true);
     }
     
-    // Приостанавливаем музыку
     auto* fmod = FMODAudioEngine::sharedEngine();
     if (fmod) {
         fmod->pauseAllMusic(true);
     }
     
-    // Визуальные эффекты
     if (m_visualEffects) {
         RewindVisuals::get()->startRewindEffect(m_playLayer);
     }
     
-    // Звук отмотки
     if (m_soundEffects) {
         playRewindSound();
     }
     
-    // Показываем метку отмотки
     if (m_rewindLabel) {
         m_rewindLabel->setVisible(true);
     }
     
-    // Обновляем UI
     if (m_rewindsLeftLabel) {
         std::string text = m_infiniteRewinds ? 
-            "∞" : fmt::format("{}", m_rewindsRemaining);
+            "INF" : fmt::format("{}", m_rewindsRemaining);
         m_rewindsLeftLabel->setString(text.c_str());
     }
 }
@@ -216,13 +199,11 @@ void TimeRewindManager::updateRewind(float dt) {
     
     m_rewindTimer += dt;
     
-    // Сколько кадров нужно воспроизвести
     while (m_rewindTimer >= m_rewindFrameInterval && 
            m_rewindFrameIndex < m_rewindFrames.size()) {
         
         m_rewindTimer -= m_rewindFrameInterval;
         
-        // Применяем кадр
         const FrameState& frame = m_rewindFrames[m_rewindFrameIndex];
         
         if (m_player1) {
@@ -236,21 +217,18 @@ void TimeRewindManager::updateRewind(float dt) {
         m_rewindFrameIndex++;
     }
     
-    // Прогресс для визуалов
     float progress = static_cast<float>(m_rewindFrameIndex) / m_rewindFrames.size();
     
     if (m_visualEffects) {
         RewindVisuals::get()->updateEffect(progress);
     }
     
-    // Обновляем метку
     if (m_rewindLabel) {
         float timeLeft = (m_rewindFrames.size() - m_rewindFrameIndex) * m_recordInterval;
         std::string text = fmt::format("-{:.1f}s", timeLeft);
         m_rewindLabel->setString(text.c_str());
     }
     
-    // Закончили?
     if (m_rewindFrameIndex >= m_rewindFrames.size()) {
         m_state = RewindState::Resuming;
     }
@@ -261,25 +239,21 @@ void TimeRewindManager::finishRewind() {
     
     m_state = RewindState::Recording;
     m_rewindFrames.clear();
-    m_frameBuffer.clear(); // Очищаем буфер после отмотки
+    m_frameBuffer.clear();
     
-    // Возобновляем музыку
     auto* fmod = FMODAudioEngine::sharedEngine();
     if (fmod) {
         fmod->resumeAllMusic();
     }
     
-    // Убираем визуальные эффекты
     if (m_visualEffects) {
         RewindVisuals::get()->stopRewindEffect();
     }
     
-    // Останавливаем звук отмотки
     if (m_soundEffects) {
         stopRewindSound();
     }
     
-    // Скрываем метку отмотки
     if (m_rewindLabel) {
         m_rewindLabel->setVisible(false);
     }
@@ -308,12 +282,10 @@ void TimeRewindManager::createVisuals() {
     
     auto winSize = CCDirector::sharedDirector()->getWinSize();
     
-    // Контейнер оверлея
     m_overlayNode = CCNode::create();
     m_overlayNode->setPosition(CCPointZero);
     m_playLayer->addChild(m_overlayNode, 10000);
     
-    // Метка оставшихся отмоток
     std::string rewindsText = m_infiniteRewinds ? 
         "INF" : fmt::format("{}", m_rewindsRemaining);
     
@@ -324,7 +296,6 @@ void TimeRewindManager::createVisuals() {
     m_rewindsLeftLabel->setColor(ccc3(100, 200, 255));
     m_overlayNode->addChild(m_rewindsLeftLabel);
     
-    // Иконка отмотки рядом с числом
     auto* rewindIcon = CCSprite::createWithSpriteFrameName("GJ_timeIcon_001.png");
     if (rewindIcon) {
         rewindIcon->setPosition(ccp(winSize.width - 55.0f, winSize.height - 20.0f));
@@ -333,7 +304,6 @@ void TimeRewindManager::createVisuals() {
         m_overlayNode->addChild(rewindIcon);
     }
     
-    // Метка времени отмотки (скрыта по умолчанию)
     m_rewindLabel = CCLabelBMFont::create("", "bigFont.fnt");
     m_rewindLabel->setPosition(ccp(winSize.width / 2, winSize.height - 30.0f));
     m_rewindLabel->setScale(0.6f);
@@ -354,10 +324,9 @@ void TimeRewindManager::cleanupVisuals() {
 }
 
 void TimeRewindManager::playRewindSound() {
-    // Используем встроенный звук GD
     FMODAudioEngine::sharedEngine()->playEffect("quitSound_01.ogg", 1.0f, 0.8f, 0.5f);
 }
 
 void TimeRewindManager::stopRewindSound() {
-    // FMOD не имеет простого способа остановить конкретный эффект
+    // FMOD doesn't have simple way to stop specific effect
 }
