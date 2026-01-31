@@ -143,8 +143,6 @@ void GroqAPI::processQueue() {
     
     if (timeSinceLastRequest < m_minRequestInterval) {
         // Schedule delayed execution
-        double delay = m_minRequestInterval - timeSinceLastRequest;
-        
         Loader::get()->queueInMainThread([this]() {
             if (!m_requestQueue.empty()) {
                 QueuedRequest request = m_requestQueue.front();
@@ -208,12 +206,13 @@ void GroqAPI::executeRequest(const QueuedRequest& request) {
                 // Try to parse error from response
                 std::string responseStr = res->string().unwrapOr("");
                 if (!responseStr.empty()) {
-                    try {
-                        auto json = matjson::parse(responseStr);
+                    auto parseResult = matjson::parse(responseStr);
+                    if (parseResult.isOk()) {
+                        auto json = parseResult.unwrap();
                         if (json.contains("error") && json["error"].contains("message")) {
                             response.error = json["error"]["message"].asString().unwrapOr(response.error);
                         }
-                    } catch (...) {}
+                    }
                 }
                 
                 Loader::get()->queueInMainThread([callback, response]() {
@@ -270,17 +269,29 @@ matjson::Value GroqAPI::buildRequestBody(const QueuedRequest& request) {
 GroqResponse GroqAPI::parseResponse(const std::string& jsonStr) {
     GroqResponse response;
     
+    auto parseResult = matjson::parse(jsonStr);
+    if (parseResult.isErr()) {
+        response.success = false;
+        response.error = fmt::format("Failed to parse response: {}", 
+            parseResult.unwrapErr().message);
+        log::error("[GroqAPI] Parse error: {}", parseResult.unwrapErr().message);
+        return response;
+    }
+    
+    auto json = parseResult.unwrap();
+    
     try {
-        auto json = matjson::parse(jsonStr);
-        
         if (json.contains("choices") && json["choices"].isArray()) {
-            auto choices = json["choices"].asArray().unwrap();
-            if (!choices.empty()) {
-                auto firstChoice = choices[0];
-                if (firstChoice.contains("message") && 
-                    firstChoice["message"].contains("content")) {
-                    response.content = firstChoice["message"]["content"].asString().unwrapOr("");
-                    response.success = true;
+            auto choicesResult = json["choices"].asArray();
+            if (choicesResult.isOk()) {
+                auto choices = choicesResult.unwrap();
+                if (!choices.empty()) {
+                    auto firstChoice = choices[0];
+                    if (firstChoice.contains("message") && 
+                        firstChoice["message"].contains("content")) {
+                        response.content = firstChoice["message"]["content"].asString().unwrapOr("");
+                        response.success = true;
+                    }
                 }
             }
         }
@@ -297,8 +308,8 @@ GroqResponse GroqAPI::parseResponse(const std::string& jsonStr) {
         
     } catch (const std::exception& e) {
         response.success = false;
-        response.error = fmt::format("Failed to parse response: {}", e.what());
-        log::error("[GroqAPI] Parse error: {}", e.what());
+        response.error = fmt::format("Failed to process response: {}", e.what());
+        log::error("[GroqAPI] Processing error: {}", e.what());
     }
     
     return response;
