@@ -1,332 +1,447 @@
 #include "TimeRewindManager.hpp"
 #include "RewindVisuals.hpp"
+#include <Geode/binding/FMODAudioEngine.hpp>
+#include <Geode/binding/GameSoundManager.hpp>
+#include <Geode/binding/GJBaseGameLayer.hpp>
 
-TimeRewindManager* TimeRewindManager::get() {
-    static TimeRewindManager instance;
-    return &instance;
-}
+namespace TimeRewind {
 
-void TimeRewindManager::loadSettings() {
-    auto* mod = Mod::get();
-    
-    m_enabled = mod->getSettingValue<bool>("enabled");
-    m_rewindDuration = static_cast<float>(mod->getSettingValue<double>("rewind-duration"));
-    m_rewindSpeed = static_cast<float>(mod->getSettingValue<double>("rewind-speed"));
-    m_maxRewindsPerAttempt = static_cast<int>(mod->getSettingValue<int64_t>("max-rewinds"));
-    m_recordFPS = static_cast<float>(mod->getSettingValue<int64_t>("record-fps"));
-    m_visualEffects = mod->getSettingValue<bool>("visual-effects");
-    m_soundEffects = mod->getSettingValue<bool>("sound-effects");
-    m_infiniteRewinds = mod->getSettingValue<bool>("infinite-rewinds");
-    
-    m_recordInterval = 1.0f / m_recordFPS;
-    
-    size_t bufferSize = static_cast<size_t>(m_recordFPS * m_rewindDuration * 1.5f);
-    m_frameBuffer.resize(std::max(bufferSize, size_t(60)));
-}
+    TimeRewindManager* TimeRewindManager::s_instance = nullptr;
 
-void TimeRewindManager::initialize(PlayLayer* playLayer) {
-    m_playLayer = playLayer;
-    
-    if (!playLayer) {
-        log::error("TimeRewind: PlayLayer is null");
-        return;
+    TimeRewindManager::TimeRewindManager()
+        : m_state(RewindState::Idle)
+        , m_rewindCharges(3)
+        , m_maxCharges(3)
+        , m_recordInterval(1.0f / 60.0f)
+        , m_timeSinceLastRecord(0.0f)
+        , m_rewindDuration(2.0f)
+        , m_rewindSpeed(2.0f)
+        , m_currentRewindTime(0.0f)
+        , m_rewindFrameIndex(0)
+        , m_recordFPS(60)
+        , m_vhsEffectEnabled(true)
+        , m_grayscaleEnabled(true)
+        , m_playLayer(nullptr)
+        , m_initialized(false)
+        , m_maxBufferSize(600) // 10 seconds at 60fps
+    {}
+
+    TimeRewindManager* TimeRewindManager::get() {
+        if (!s_instance) {
+            s_instance = new TimeRewindManager();
+        }
+        return s_instance;
     }
-    
-    m_player1 = playLayer->m_player1;
-    m_player2 = playLayer->m_player2;
-    
-    loadSettings();
-    reset();
-    
-    if (m_enabled) {
+
+    void TimeRewindManager::destroy() {
+        if (s_instance) {
+            delete s_instance;
+            s_instance = nullptr;
+        }
+    }
+
+    void TimeRewindManager::loadSettings() {
+        m_maxCharges = Mod::get()->getSettingValue<int64_t>("rewind-charges");
+        m_rewindCharges = m_maxCharges;
+        m_rewindDuration = Mod::get()->getSettingValue<double>("rewind-duration");
+        m_rewindSpeed = Mod::get()->getSettingValue<double>("rewind-speed");
+        m_recordFPS = Mod::get()->getSettingValue<int64_t>("record-fps");
+        m_vhsEffectEnabled = Mod::get()->getSettingValue<bool>("vhs-effect");
+        m_grayscaleEnabled = Mod::get()->getSettingValue<bool>("grayscale-effect");
+        
+        m_recordInterval = 1.0f / static_cast<float>(m_recordFPS);
+        m_maxBufferSize = static_cast<size_t>(m_rewindDuration * m_recordFPS * 2); // Extra buffer
+        
+        log::info("TimeRewind settings loaded: charges={}, duration={}, speed={}, fps={}", 
+            m_maxCharges, m_rewindDuration, m_rewindSpeed, m_recordFPS);
+    }
+
+    void TimeRewindManager::init(PlayLayer* playLayer) {
+        m_playLayer = playLayer;
+        loadSettings();
+        reset();
+        m_initialized = true;
         m_state = RewindState::Recording;
-        createVisuals();
-        log::info("TimeRewind initialized: {}fps, {}s buffer, {} rewinds",
-                  m_recordFPS, m_rewindDuration, m_maxRewindsPerAttempt);
+        
+        log::info("TimeRewindManager initialized for level");
     }
-}
 
-void TimeRewindManager::cleanup() {
-    cleanupVisuals();
-    m_frameBuffer.clear();
-    m_rewindFrames.clear();
-    m_state = RewindState::Inactive;
-    m_playLayer = nullptr;
-    m_player1 = nullptr;
-    m_player2 = nullptr;
-}
+    void TimeRewindManager::reset() {
+        clearBuffer();
+        m_rewindCharges = m_maxCharges;
+        m_state = RewindState::Idle;
+        m_timeSinceLastRecord = 0.0f;
+        m_currentRewindTime = 0.0f;
+        m_rewindFrameIndex = 0;
+        
+        log::debug("TimeRewindManager reset");
+    }
 
-void TimeRewindManager::reset() {
-    m_frameBuffer.clear();
-    m_rewindFrames.clear();
-    m_rewindFrameIndex = 0;
-    m_rewindTimer = 0.0f;
-    m_recordTimer = 0.0f;
-    
-    if (m_infiniteRewinds) {
-        m_rewindsRemaining = 999;
-    } else {
-        m_rewindsRemaining = m_maxRewindsPerAttempt;
+    void TimeRewindManager::clearBuffer() {
+        m_frameBuffer.clear();
+        log::debug("Frame buffer cleared");
     }
-    
-    if (m_enabled) {
-        m_state = RewindState::Recording;
-    }
-    
-    if (m_rewindsLeftLabel) {
-        std::string text = m_infiniteRewinds ? 
-            "INF" : fmt::format("{}", m_rewindsRemaining);
-        m_rewindsLeftLabel->setString(text.c_str());
-    }
-}
 
-void TimeRewindManager::update(float dt) {
-    if (!m_enabled || !m_playLayer) return;
-    
-    switch (m_state) {
-        case RewindState::Recording:
-            recordFrame(dt);
-            break;
-            
-        case RewindState::Rewinding:
-            updateRewind(dt);
-            break;
-            
-        case RewindState::Resuming:
+    PlayerFrameState TimeRewindManager::capturePlayerState(PlayerObject* player) {
+        PlayerFrameState state;
+        
+        if (!player) {
+            return state;
+        }
+        
+        // Position and physics
+        state.position = player->getPosition();
+        state.xVelocity = player->m_xVelocity;
+        state.yVelocity = player->m_yVelocity;
+        state.rotation = player->getRotation();
+        
+        // State flags
+        state.isUpsideDown = player->m_isUpsideDown;
+        state.isOnGround = player->m_isOnGround;
+        state.isHolding = player->m_isHolding;
+        state.isDashing = player->m_isDashing;
+        state.isSliding = player->m_isSliding;
+        state.isRising = player->m_isRising;
+        
+        // Gamemode - detect current mode
+        if (player->m_isShip) state.gamemode = 1;
+        else if (player->m_isBall) state.gamemode = 2;
+        else if (player->m_isBird) state.gamemode = 3;  // UFO
+        else if (player->m_isDart) state.gamemode = 4;  // Wave
+        else if (player->m_isRobot) state.gamemode = 5;
+        else if (player->m_isSpider) state.gamemode = 6;
+        else if (player->m_isSwing) state.gamemode = 7;
+        else state.gamemode = 0;  // Cube
+        
+        state.isMini = player->m_vehicleSize < 1.0f;
+        state.playerSpeed = player->m_playerSpeed;
+        
+        // Visual state
+        state.iconScale = player->getScale();
+        state.iconOpacity = player->getOpacity();
+        state.isVisible = player->isVisible();
+        
+        // Animation state
+        state.flipX = player->isFlipX();
+        state.flipY = player->isFlipY();
+        
+        return state;
+    }
+
+    void TimeRewindManager::restorePlayerState(PlayerObject* player, const PlayerFrameState& state) {
+        if (!player) return;
+        
+        // Position and physics
+        player->setPosition(state.position);
+        player->m_xVelocity = state.xVelocity;
+        player->m_yVelocity = state.yVelocity;
+        player->setRotation(state.rotation);
+        
+        // State flags
+        player->m_isUpsideDown = state.isUpsideDown;
+        player->m_isOnGround = state.isOnGround;
+        player->m_isHolding = state.isHolding;
+        player->m_isDashing = state.isDashing;
+        player->m_isSliding = state.isSliding;
+        player->m_isRising = state.isRising;
+        
+        // Visual state
+        player->setScale(state.iconScale);
+        player->setOpacity(static_cast<unsigned char>(state.iconOpacity));
+        player->setVisible(state.isVisible);
+        
+        // Flip state
+        player->setFlipX(state.flipX);
+        player->setFlipY(state.flipY);
+    }
+
+    void TimeRewindManager::recordFrame(float dt) {
+        if (!m_initialized || !m_playLayer || isRewinding()) {
+            return;
+        }
+        
+        m_timeSinceLastRecord += dt;
+        
+        if (m_timeSinceLastRecord < m_recordInterval) {
+            return;
+        }
+        
+        m_timeSinceLastRecord = 0.0f;
+        
+        auto player1 = m_playLayer->m_player1;
+        auto player2 = m_playLayer->m_player2;
+        
+        if (!player1) return;
+        
+        // Don't record if player is dead
+        if (player1->m_isDead) return;
+        
+        FrameState frame;
+        
+        // Timestamps
+        frame.gameTime = m_playLayer->m_gameState.m_currentProgress;
+        frame.levelTime = m_playLayer->m_totalTime;
+        frame.frameNumber = static_cast<int>(m_frameBuffer.size());
+        
+        // Capture player states
+        frame.player1 = capturePlayerState(player1);
+        frame.player2 = capturePlayerState(player2);
+        frame.isDualMode = m_playLayer->m_gameState.m_isDualMode;
+        
+        // Camera state
+        if (auto camera = m_playLayer->m_gameState.m_cameraPosition) {
+            frame.cameraPosition = CCPoint(camera.x, camera.y);
+        }
+        frame.cameraZoom = m_playLayer->m_gameState.m_cameraZoom;
+        frame.cameraRotation = m_playLayer->m_gameState.m_cameraAngle;
+        
+        // Music time
+        auto audioEngine = FMODAudioEngine::sharedEngine();
+        frame.musicTimeMS = static_cast<unsigned int>(audioEngine->getMusicTimeMS());
+        
+        // Level state
+        frame.levelProgress = m_playLayer->getCurrentPercent();
+        frame.isPlatformer = m_playLayer->m_isPlatformer;
+        
+        // Add to buffer
+        m_frameBuffer.push_back(frame);
+        
+        // Limit buffer size
+        while (m_frameBuffer.size() > m_maxBufferSize) {
+            m_frameBuffer.pop_front();
+        }
+    }
+
+    bool TimeRewindManager::canRewind() const {
+        return m_rewindCharges > 0 && 
+               m_frameBuffer.size() > 10 && 
+               m_state != RewindState::Rewinding &&
+               m_initialized;
+    }
+
+    bool TimeRewindManager::startRewind() {
+        if (!canRewind()) {
+            log::warn("Cannot start rewind: charges={}, bufferSize={}, state={}", 
+                m_rewindCharges, m_frameBuffer.size(), static_cast<int>(m_state));
+            return false;
+        }
+        
+        log::info("Starting rewind with {} frames in buffer", m_frameBuffer.size());
+        
+        m_rewindCharges--;
+        m_state = RewindState::Rewinding;
+        m_currentRewindTime = 0.0f;
+        m_rewindFrameIndex = m_frameBuffer.size() - 1;
+        
+        // Calculate how many frames to rewind
+        size_t framesToRewind = static_cast<size_t>(m_rewindDuration * m_recordFPS);
+        if (framesToRewind >= m_frameBuffer.size()) {
+            framesToRewind = m_frameBuffer.size() - 1;
+        }
+        
+        // Pause game physics
+        if (m_playLayer) {
+            // Reset death state for players
+            if (m_playLayer->m_player1) {
+                m_playLayer->m_player1->m_isDead = false;
+            }
+            if (m_playLayer->m_player2) {
+                m_playLayer->m_player2->m_isDead = false;
+            }
+        }
+        
+        // Trigger callback
+        if (onRewindStart) {
+            onRewindStart();
+        }
+        
+        return true;
+    }
+
+    float TimeRewindManager::easeInOutCubic(float t) {
+        return t < 0.5f ? 4.0f * t * t * t : 1.0f - powf(-2.0f * t + 2.0f, 3.0f) / 2.0f;
+    }
+
+    void TimeRewindManager::interpolateStates(const FrameState& from, const FrameState& to, float t, FrameState& result) {
+        // Interpolate player 1 position
+        result.player1.position = ccpLerp(from.player1.position, to.player1.position, t);
+        result.player1.rotation = from.player1.rotation + (to.player1.rotation - from.player1.rotation) * t;
+        result.player1.xVelocity = from.player1.xVelocity + (to.player1.xVelocity - from.player1.xVelocity) * t;
+        result.player1.yVelocity = from.player1.yVelocity + (to.player1.yVelocity - from.player1.yVelocity) * t;
+        
+        // Copy non-interpolatable state from 'to'
+        result.player1.isUpsideDown = to.player1.isUpsideDown;
+        result.player1.isOnGround = to.player1.isOnGround;
+        result.player1.gamemode = to.player1.gamemode;
+        result.player1.isMini = to.player1.isMini;
+        result.player1.flipX = to.player1.flipX;
+        result.player1.flipY = to.player1.flipY;
+        
+        // Interpolate player 2 if dual mode
+        if (from.isDualMode) {
+            result.player2.position = ccpLerp(from.player2.position, to.player2.position, t);
+            result.player2.rotation = from.player2.rotation + (to.player2.rotation - from.player2.rotation) * t;
+            result.player2.xVelocity = from.player2.xVelocity + (to.player2.xVelocity - from.player2.xVelocity) * t;
+            result.player2.yVelocity = from.player2.yVelocity + (to.player2.yVelocity - from.player2.yVelocity) * t;
+            result.player2.isUpsideDown = to.player2.isUpsideDown;
+            result.player2.isOnGround = to.player2.isOnGround;
+        }
+        
+        // Interpolate camera
+        result.cameraPosition = ccpLerp(from.cameraPosition, to.cameraPosition, t);
+        result.cameraZoom = from.cameraZoom + (to.cameraZoom - from.cameraZoom) * t;
+        result.cameraRotation = from.cameraRotation + (to.cameraRotation - from.cameraRotation) * t;
+        
+        // Interpolate music time (cast to float for interpolation, then back to int)
+        result.musicTimeMS = static_cast<unsigned int>(
+            from.musicTimeMS + (static_cast<float>(to.musicTimeMS) - static_cast<float>(from.musicTimeMS)) * t
+        );
+        
+        result.isDualMode = from.isDualMode;
+        result.isPlatformer = from.isPlatformer;
+    }
+
+    void TimeRewindManager::updateRewind(float dt) {
+        if (m_state != RewindState::Rewinding || !m_playLayer || m_frameBuffer.empty()) {
+            return;
+        }
+        
+        // Calculate total rewind animation duration
+        size_t framesToRewind = static_cast<size_t>(m_rewindDuration * m_recordFPS);
+        if (framesToRewind >= m_frameBuffer.size()) {
+            framesToRewind = m_frameBuffer.size() - 1;
+        }
+        
+        float animationDuration = m_rewindDuration / m_rewindSpeed;
+        m_currentRewindTime += dt;
+        
+        float progress = m_currentRewindTime / animationDuration;
+        progress = std::min(progress, 1.0f);
+        
+        // Apply easing for smoother feel
+        float easedProgress = easeInOutCubic(progress);
+        
+        // Calculate which frame we should be at
+        size_t targetFrameOffset = static_cast<size_t>(easedProgress * framesToRewind);
+        size_t currentFrameIndex = m_frameBuffer.size() - 1 - targetFrameOffset;
+        
+        // Ensure we don't go out of bounds
+        currentFrameIndex = std::max(currentFrameIndex, size_t(0));
+        currentFrameIndex = std::min(currentFrameIndex, m_frameBuffer.size() - 1);
+        
+        // Get frames for interpolation
+        size_t nextFrameIndex = (currentFrameIndex > 0) ? currentFrameIndex - 1 : 0;
+        
+        const FrameState& currentFrame = m_frameBuffer[currentFrameIndex];
+        const FrameState& nextFrame = m_frameBuffer[nextFrameIndex];
+        
+        // Calculate sub-frame interpolation
+        float frameProgress = fmodf(easedProgress * framesToRewind, 1.0f);
+        
+        FrameState interpolatedFrame;
+        interpolateStates(currentFrame, nextFrame, frameProgress, interpolatedFrame);
+        
+        // Apply state to players
+        restorePlayerState(m_playLayer->m_player1, interpolatedFrame.player1);
+        
+        if (interpolatedFrame.isDualMode && m_playLayer->m_player2) {
+            restorePlayerState(m_playLayer->m_player2, interpolatedFrame.player2);
+        }
+        
+        // Sync music - rewind audio
+        auto audioEngine = FMODAudioEngine::sharedEngine();
+        audioEngine->setMusicTimeMS(interpolatedFrame.musicTimeMS);
+        
+        // Update camera position manually during rewind
+        // The game camera follows player normally, but during rewind we control it
+        if (auto gameLayer = m_playLayer) {
+            // Move camera to stored position
+            gameLayer->m_gameState.m_cameraPosition = cocos2d::CCPoint(
+                interpolatedFrame.cameraPosition.x,
+                interpolatedFrame.cameraPosition.y
+            );
+        }
+        
+        // Progress callback
+        if (onRewindProgress) {
+            onRewindProgress(progress);
+        }
+        
+        // Check if rewind is complete
+        if (progress >= 1.0f) {
             finishRewind();
-            break;
-            
-        default:
-            break;
+        }
     }
-}
 
-void TimeRewindManager::recordFrame(float dt) {
-    if (!m_player1) return;
-    
-    m_recordTimer += dt;
-    
-    if (m_recordTimer < m_recordInterval) return;
-    m_recordTimer -= m_recordInterval;
-    
-    FrameState frame{};
-    frame.timestamp = m_playLayer->m_gameState.m_levelTime;
-    frame.deltaTime = dt;
-    
-    // Захватываем состояние игрока 1
-    frame.capturePlayer(m_player1, frame.player1);
-    
-    // Захватываем игрока 2 если есть
-    frame.hasDualPlayer = m_player2 != nullptr && m_player2->isVisible();
-    if (frame.hasDualPlayer) {
-        frame.capturePlayer(m_player2, frame.player2);
-    }
-    
-    // Сохраняем
-    m_frameBuffer.push(frame);
-}
-
-bool TimeRewindManager::canRewind() const {
-    if (!m_enabled) return false;
-    if (m_state == RewindState::Rewinding) return false;
-    if (m_frameBuffer.empty()) return false;
-    if (m_rewindsRemaining <= 0 && !m_infiniteRewinds) return false;
-    
-    return true;
-}
-
-void TimeRewindManager::startRewind() {
-    if (!canRewind()) {
-        log::info("TimeRewind: Cannot rewind (remaining: {}, frames: {})",
-                  m_rewindsRemaining, m_frameBuffer.size());
-        return;
-    }
-    
-    log::info("TimeRewind: Starting rewind with {} frames", m_frameBuffer.size());
-    
-    if (!m_infiniteRewinds) {
-        m_rewindsRemaining--;
-    }
-    
-    size_t framesToRewind = static_cast<size_t>(m_rewindDuration * m_recordFPS);
-    m_rewindFrames = m_frameBuffer.getRewindFrames(framesToRewind);
-    
-    if (m_rewindFrames.empty()) {
-        log::warn("TimeRewind: No frames to rewind");
-        return;
-    }
-    
-    m_rewindFrameIndex = 0;
-    m_rewindTimer = 0.0f;
-    m_rewindFrameInterval = m_recordInterval / m_rewindSpeed;
-    
-    m_state = RewindState::Rewinding;
-    
-    if (m_player1) {
-        m_player1->m_isDead = false;
-        m_player1->setVisible(true);
-    }
-    
-    auto* fmod = FMODAudioEngine::sharedEngine();
-    if (fmod) {
-        fmod->pauseAllMusic(true);
-    }
-    
-    if (m_visualEffects) {
-        RewindVisuals::get()->startRewindEffect(m_playLayer);
-    }
-    
-    if (m_soundEffects) {
-        playRewindSound();
-    }
-    
-    if (m_rewindLabel) {
-        m_rewindLabel->setVisible(true);
-    }
-    
-    if (m_rewindsLeftLabel) {
-        std::string text = m_infiniteRewinds ? 
-            "INF" : fmt::format("{}", m_rewindsRemaining);
-        m_rewindsLeftLabel->setString(text.c_str());
-    }
-}
-
-void TimeRewindManager::updateRewind(float dt) {
-    if (m_rewindFrames.empty()) {
-        finishRewind();
-        return;
-    }
-    
-    m_rewindTimer += dt;
-    
-    while (m_rewindTimer >= m_rewindFrameInterval && 
-           m_rewindFrameIndex < m_rewindFrames.size()) {
-        
-        m_rewindTimer -= m_rewindFrameInterval;
-        
-        const FrameState& frame = m_rewindFrames[m_rewindFrameIndex];
-        
-        if (m_player1) {
-            frame.applyToPlayer(m_player1, frame.player1);
+    void TimeRewindManager::finishRewind() {
+        if (m_state != RewindState::Rewinding) {
+            return;
         }
         
-        if (frame.hasDualPlayer && m_player2) {
-            frame.applyToPlayer(m_player2, frame.player2);
-        }
+        log::info("Finishing rewind");
         
-        m_rewindFrameIndex++;
-    }
-    
-    float progress = static_cast<float>(m_rewindFrameIndex) / m_rewindFrames.size();
-    
-    if (m_visualEffects) {
-        RewindVisuals::get()->updateEffect(progress);
-    }
-    
-    if (m_rewindLabel) {
-        float timeLeft = (m_rewindFrames.size() - m_rewindFrameIndex) * m_recordInterval;
-        std::string text = fmt::format("-{:.1f}s", timeLeft);
-        m_rewindLabel->setString(text.c_str());
-    }
-    
-    if (m_rewindFrameIndex >= m_rewindFrames.size()) {
         m_state = RewindState::Resuming;
+        
+        // Get the final frame to restore to
+        size_t framesToRewind = static_cast<size_t>(m_rewindDuration * m_recordFPS);
+        if (framesToRewind >= m_frameBuffer.size()) {
+            framesToRewind = m_frameBuffer.size() - 1;
+        }
+        
+        size_t targetIndex = m_frameBuffer.size() - 1 - framesToRewind;
+        targetIndex = std::max(targetIndex, size_t(0));
+        
+        const FrameState& targetFrame = m_frameBuffer[targetIndex];
+        
+        // Restore final state
+        if (m_playLayer && m_playLayer->m_player1) {
+            restorePlayerState(m_playLayer->m_player1, targetFrame.player1);
+            m_playLayer->m_player1->m_isDead = false;
+            
+            if (targetFrame.isDualMode && m_playLayer->m_player2) {
+                restorePlayerState(m_playLayer->m_player2, targetFrame.player2);
+                m_playLayer->m_player2->m_isDead = false;
+            }
+        }
+        
+        // Set final music position
+        auto audioEngine = FMODAudioEngine::sharedEngine();
+        audioEngine->setMusicTimeMS(targetFrame.musicTimeMS);
+        
+        // Clear frames after the target (we're starting fresh from this point)
+        while (m_frameBuffer.size() > targetIndex + 1) {
+            m_frameBuffer.pop_back();
+        }
+        
+        // Callback
+        if (onRewindEnd) {
+            onRewindEnd();
+        }
+        
+        // Small delay before resuming normal gameplay
+        m_state = RewindState::Recording;
+        m_currentRewindTime = 0.0f;
     }
-}
 
-void TimeRewindManager::finishRewind() {
-    log::info("TimeRewind: Rewind finished");
-    
-    m_state = RewindState::Recording;
-    m_rewindFrames.clear();
-    m_frameBuffer.clear();
-    
-    auto* fmod = FMODAudioEngine::sharedEngine();
-    if (fmod) {
-        fmod->resumeAllMusic();
+    void TimeRewindManager::cancelRewind() {
+        if (m_state == RewindState::Rewinding) {
+            m_state = RewindState::Recording;
+            m_currentRewindTime = 0.0f;
+            m_rewindCharges++; // Refund the charge
+            
+            if (onRewindEnd) {
+                onRewindEnd();
+            }
+        }
     }
-    
-    if (m_visualEffects) {
-        RewindVisuals::get()->stopRewindEffect();
-    }
-    
-    if (m_soundEffects) {
-        stopRewindSound();
-    }
-    
-    if (m_rewindLabel) {
-        m_rewindLabel->setVisible(false);
-    }
-}
 
-void TimeRewindManager::cancelRewind() {
-    if (m_state != RewindState::Rewinding) return;
-    
-    m_state = RewindState::Recording;
-    m_rewindFrames.clear();
-    
-    if (m_visualEffects) {
-        RewindVisuals::get()->stopRewindEffect();
+    float TimeRewindManager::getRewindProgress() const {
+        if (m_state != RewindState::Rewinding) {
+            return 0.0f;
+        }
+        
+        float animationDuration = m_rewindDuration / m_rewindSpeed;
+        return std::min(m_currentRewindTime / animationDuration, 1.0f);
     }
-    
-    stopRewindSound();
-    
-    auto* fmod = FMODAudioEngine::sharedEngine();
-    if (fmod) {
-        fmod->resumeAllMusic();
-    }
-}
 
-void TimeRewindManager::createVisuals() {
-    if (!m_playLayer) return;
-    
-    auto winSize = CCDirector::sharedDirector()->getWinSize();
-    
-    m_overlayNode = CCNode::create();
-    m_overlayNode->setPosition(CCPointZero);
-    m_playLayer->addChild(m_overlayNode, 10000);
-    
-    std::string rewindsText = m_infiniteRewinds ? 
-        "INF" : fmt::format("{}", m_rewindsRemaining);
-    
-    m_rewindsLeftLabel = CCLabelBMFont::create(rewindsText.c_str(), "bigFont.fnt");
-    m_rewindsLeftLabel->setPosition(ccp(winSize.width - 30.0f, winSize.height - 20.0f));
-    m_rewindsLeftLabel->setScale(0.4f);
-    m_rewindsLeftLabel->setOpacity(180);
-    m_rewindsLeftLabel->setColor(ccc3(100, 200, 255));
-    m_overlayNode->addChild(m_rewindsLeftLabel);
-    
-    auto* rewindIcon = CCSprite::createWithSpriteFrameName("GJ_timeIcon_001.png");
-    if (rewindIcon) {
-        rewindIcon->setPosition(ccp(winSize.width - 55.0f, winSize.height - 20.0f));
-        rewindIcon->setScale(0.5f);
-        rewindIcon->setOpacity(180);
-        m_overlayNode->addChild(rewindIcon);
-    }
-    
-    m_rewindLabel = CCLabelBMFont::create("", "bigFont.fnt");
-    m_rewindLabel->setPosition(ccp(winSize.width / 2, winSize.height - 30.0f));
-    m_rewindLabel->setScale(0.6f);
-    m_rewindLabel->setColor(ccc3(255, 100, 100));
-    m_rewindLabel->setVisible(false);
-    m_overlayNode->addChild(m_rewindLabel);
-}
-
-void TimeRewindManager::cleanupVisuals() {
-    if (m_overlayNode) {
-        m_overlayNode->removeFromParent();
-        m_overlayNode = nullptr;
-    }
-    m_rewindLabel = nullptr;
-    m_rewindsLeftLabel = nullptr;
-    
-    RewindVisuals::get()->cleanup();
-}
-
-void TimeRewindManager::playRewindSound() {
-    FMODAudioEngine::sharedEngine()->playEffect("quitSound_01.ogg", 1.0f, 0.8f, 0.5f);
-}
-
-void TimeRewindManager::stopRewindSound() {
-    // FMOD doesn't have simple way to stop specific effect
-}
+} // namespace TimeRewind
