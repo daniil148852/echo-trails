@@ -1,33 +1,36 @@
-# Time Rewind Mod
+# AI Assistant for Geometry Dash
 
-## Description
-When you die in Geometry Dash, instead of restarting, time rewinds a few seconds and you can continue playing from that point!
+Powered by Groq's ultra-fast AI inference!
 
 ## Features
-- **Rewind on Death**: Automatically rewinds time when you hit an obstacle
-- **Charge System**: Limited rewinds per attempt (default: 3)
-- **Visual Effects**: VHS-style glitch effects during rewind
-- **Audio Sync**: Music rewinds with the gameplay
-- **Configurable**: Adjust rewind duration, speed, and charges
 
-## How It Works
-1. Play the level normally
-2. When you die, time rewinds ~3 seconds
-3. Resume playing from the earlier point
-4. Limited charges - use them wisely!
+🤖 **Chat with AI** - Ask questions about gameplay, get tips, or just chat!
 
-## Settings
-- **Enable Time Rewind**: Toggle the mod on/off
-- **Max Charges**: Number of rewinds per attempt (1-10)
-- **Rewind Duration**: How far back to rewind (1-10 seconds)
-- **Rewind Speed**: How fast the rewind animation plays
-- **Visual Effects**: Enable/disable VHS glitch effects
-- **Audio Sync**: Enable/disable music synchronization
+📊 **Gameplay Analysis** - AI analyzes your death patterns and suggests improvements
 
-## Compatibility
-- Geometry Dash 2.2074
-- Works with Classic and Platformer modes
-- Android (64-bit) and Windows
+💡 **Smart Tips** - Get specific advice for sections where you're struggling
 
-## Credits
-Created for the Geode modding community.
+🎯 **Practice Suggestions** - AI tells you which sections to practice most
+
+## Setup
+
+1. Get a free API key from [console.groq.com](https://console.groq.com)
+2. Open mod settings and paste your API key
+3. Click the chat button in-game!
+
+## Available Models
+
+- **llama-3.3-70b-versatile** - Best quality (recommended)
+- **llama-3.1-8b-instant** - Faster responses
+- **mixtral-8x7b-32768** - Good for longer context
+- **gemma2-9b-it** - Alternative option
+
+## Quick Actions
+
+- **Analyze** - Get a full analysis of your current session
+- **Get Tip** - Get a tip for your trouble spot
+- **Clear** - Clear the conversation history
+
+## Privacy
+
+Your API key is stored locally and never shared. Gameplay data is only sent to Groq for analysis when you request it.
