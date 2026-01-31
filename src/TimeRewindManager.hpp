@@ -12,6 +12,8 @@ enum class RewindState {
     Resuming        // Переход обратно к игре
 };
 
+class RewindVisuals;
+
 class TimeRewindManager {
 private:
     TimeRewindManager() = default;
@@ -25,10 +27,10 @@ public:
     
     // === Настройки (кэш) ===
     bool m_enabled = true;
-    float m_rewindDuration = 2.0f;          // Секунд отмотки
-    float m_rewindSpeed = 2.0f;             // Скорость воспроизведения
-    int m_maxRewindsPerAttempt = 3;         // Лимит отмоток
-    float m_recordFPS = 60.0f;              // FPS записи
+    float m_rewindDuration = 2.0f;
+    float m_rewindSpeed = 2.0f;
+    int m_maxRewindsPerAttempt = 3;
+    float m_recordFPS = 60.0f;
     bool m_visualEffects = true;
     bool m_soundEffects = true;
     bool m_infiniteRewinds = false;
@@ -46,7 +48,6 @@ public:
     
     // === Визуальные элементы ===
     CCNode* m_overlayNode = nullptr;
-    CCSprite* m_vhsOverlay = nullptr;
     CCLabelBMFont* m_rewindLabel = nullptr;
     CCLabelBMFont* m_rewindsLeftLabel = nullptr;
     
