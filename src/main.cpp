@@ -3,190 +3,368 @@
 #include <Geode/modify/PlayerObject.hpp>
 #include <Geode/modify/PauseLayer.hpp>
 #include <Geode/modify/GJBaseGameLayer.hpp>
+#include <Geode/modify/EndLevelLayer.hpp>
 
 #include "TimeRewindManager.hpp"
 #include "RewindVisuals.hpp"
 
 using namespace geode::prelude;
-using namespace TimeRewind;
+
+// ============================================================
+// PlayLayer Hooks
+// ============================================================
 
 class $modify(TimeRewindPlayLayer, PlayLayer) {
-    
     struct Fields {
-        bool m_rewindInputBlocked = false;
+        bool m_initialized = false;
+        bool m_deathIntercepted = false;
     };
     
+    /**
+     * @brief Initialize time rewind when level starts
+     */
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
         if (!PlayLayer::init(level, useReplay, dontCreateObjects)) {
             return false;
         }
         
-        TimeRewindManager::get()->init(this);
-        RewindVisuals::get()->init(this);
+        // Initialize the rewind manager
+        auto manager = TimeRewindManager::get();
+        manager->loadSettings();
+        manager->initialize(this);
         
-        log::info("TimeRewind mod initialized for level: {}", level->m_levelName);
+        // Create the charges display
+        RewindVisuals::get()->createChargesDisplay(this);
+        
+        m_fields->m_initialized = true;
+        
+        log::info("[TimeRewind] Level initialized: {}", 
+                  level->m_levelName.c_str());
         
         return true;
     }
     
+    /**
+     * @brief Record states in postUpdate (crucial for GD 2.2's variable TPS)
+     */
     void postUpdate(float dt) {
         PlayLayer::postUpdate(dt);
         
         auto manager = TimeRewindManager::get();
         
+        // If currently rewinding, handle the rewind animation
         if (manager->isRewinding()) {
-            manager->updateRewind(dt);
+            manager->updateRewind(this, dt);
             return;
         }
         
-        manager->recordFrame(dt);
+        // Otherwise, record frames if we should
+        if (manager->isEnabled() && manager->isRecording()) {
+            if (manager->shouldRecordFrame(dt)) {
+                manager->recordFrame(this);
+            }
+        }
+        
+        // Update charges display
+        RewindVisuals::get()->updateChargesDisplay(
+            manager->getCharges(),
+            manager->getMaxCharges()
+        );
     }
     
-    void destroyPlayer(PlayerObject* player, GameObject* obj) {
+    /**
+     * @brief Intercept player death and trigger rewind instead
+     */
+    void destroyPlayer(PlayerObject* player, GameObject* object) {
         auto manager = TimeRewindManager::get();
         
-        if (manager->canRewind()) {
-            log::info("Death intercepted - starting rewind");
+        // Check if we can rewind instead of dying
+        if (manager->isEnabled() && manager->canRewind()) {
+            log::info("[TimeRewind] Death intercepted! Starting rewind...");
             
-            if (manager->startRewind()) {
+            m_fields->m_deathIntercepted = true;
+            
+            // Start the rewind sequence (don't call original)
+            if (manager->startRewind(this)) {
+                // Prevent death state
                 if (m_player1) {
                     m_player1->m_isDead = false;
+                    m_player1->setVisible(true);
+                    m_player1->stopAllActions();
                 }
                 if (m_player2) {
                     m_player2->m_isDead = false;
+                    m_player2->setVisible(true);
+                    m_player2->stopAllActions();
                 }
                 
+                // Don't proceed with death
                 return;
             }
         }
         
-        PlayLayer::destroyPlayer(player, obj);
+        // No rewinds available or rewind failed, proceed with normal death
+        m_fields->m_deathIntercepted = false;
+        PlayLayer::destroyPlayer(player, object);
     }
     
+    /**
+     * @brief Clear buffer on level reset
+     */
     void resetLevel() {
         auto manager = TimeRewindManager::get();
         
+        // Cancel any active rewind
         if (manager->isRewinding()) {
-            manager->cancelRewind();
+            manager->cancelRewind(this);
+            RewindVisuals::get()->hideRewindOverlay(this);
         }
         
+        // Reset rewind state and reinitialize
         manager->reset();
+        manager->initialize(this);
         
-        RewindVisuals::get()->updateCharges(
-            manager->getCharges(), 
-            manager->getMaxCharges()
-        );
-        
+        // Call original reset
         PlayLayer::resetLevel();
         
-        log::debug("Level reset - rewind buffer cleared");
+        // Recreate UI elements
+        RewindVisuals::get()->createChargesDisplay(this);
+        
+        m_fields->m_deathIntercepted = false;
+        
+        log::debug("[TimeRewind] Level reset, buffer cleared");
     }
     
-    void levelComplete() {
-        TimeRewindManager::get()->reset();
-        PlayLayer::levelComplete();
-    }
-    
+    /**
+     * @brief Clean up on level exit
+     */
     void onQuit() {
-        TimeRewindManager::destroy();
-        RewindVisuals::destroy();
+        log::info("[TimeRewind] Exiting level, cleaning up...");
+        
+        // Clean up visuals
+        RewindVisuals::get()->cleanup();
+        
+        // Reset manager state
+        TimeRewindManager::get()->reset();
         
         PlayLayer::onQuit();
-        
-        log::info("TimeRewind mod cleanup complete");
     }
     
-    void update(float dt) {
+    /**
+     * @brief Handle level completion
+     */
+    void levelComplete() {
+        // Disable rewind on level complete
         auto manager = TimeRewindManager::get();
         
         if (manager->isRewinding()) {
-            if (m_uiLayer) {
-                m_uiLayer->update(dt);
-            }
+            manager->cancelRewind(this);
+        }
+        
+        manager->reset();
+        RewindVisuals::get()->cleanup();
+        
+        PlayLayer::levelComplete();
+    }
+    
+    /**
+     * @brief Override update to skip during rewind
+     */
+    void update(float dt) {
+        auto manager = TimeRewindManager::get();
+        
+        // If rewinding, don't run normal game update
+        if (manager->isRewinding()) {
+            // Only update cocos2d base layer (for animations)
+            CCNode::update(dt);
             return;
         }
         
         PlayLayer::update(dt);
     }
     
-    void checkCollisions(PlayerObject* player, float dt, bool p2) {
-        if (TimeRewindManager::get()->isRewinding()) {
-            return;
+    /**
+     * @brief Handle pausing during rewind
+     */
+    void pauseGame(bool pause) {
+        auto manager = TimeRewindManager::get();
+        
+        // Cancel rewind if pausing
+        if (pause && manager->isRewinding()) {
+            manager->cancelRewind(this);
+            RewindVisuals::get()->hideRewindOverlay(this);
         }
         
-        PlayLayer::checkCollisions(player, dt, p2);
+        PlayLayer::pauseGame(pause);
     }
 };
 
-class $modify(TimeRewindPlayerObject, PlayerObject) {
-    
-    void pushButton(PlayerButton btn) {
-        if (TimeRewindManager::get()->isRewinding()) {
+// ============================================================
+// GJBaseGameLayer Hooks (Input Blocking)
+// ============================================================
+
+class $modify(TimeRewindGameLayer, GJBaseGameLayer) {
+    /**
+     * @brief Block button inputs during rewind
+     */
+    void handleButton(bool down, int button, bool isPlayer1) {
+        auto manager = TimeRewindManager::get();
+        
+        // Block all input during rewind
+        if (manager->isInputBlocked() || manager->isRewinding()) {
             return;
         }
         
-        PlayerObject::pushButton(btn);
-    }
-    
-    void releaseButton(PlayerButton btn) {
-        if (TimeRewindManager::get()->isRewinding()) {
-            return;
-        }
-        
-        PlayerObject::releaseButton(btn);
-    }
-    
-    void updateJump(float dt) {
-        if (TimeRewindManager::get()->isRewinding()) {
-            return;
-        }
-        
-        PlayerObject::updateJump(dt);
+        GJBaseGameLayer::handleButton(down, button, isPlayer1);
     }
 };
 
-class $modify(TimeRewindGJBaseGameLayer, GJBaseGameLayer) {
-    
-    void updateCamera(float dt) {
-        if (TimeRewindManager::get()->isRewinding()) {
+// ============================================================
+// PlayerObject Hooks (Input Blocking)
+// ============================================================
+
+class $modify(TimeRewindPlayer, PlayerObject) {
+    /**
+     * @brief Block push button during rewind
+     */
+    void pushButton(PlayerButton button) {
+        auto manager = TimeRewindManager::get();
+        
+        if (manager->isInputBlocked() || manager->isRewinding()) {
             return;
         }
         
-        GJBaseGameLayer::updateCamera(dt);
+        PlayerObject::pushButton(button);
+    }
+    
+    /**
+     * @brief Block release button during rewind
+     */
+    void releaseButton(PlayerButton button) {
+        auto manager = TimeRewindManager::get();
+        
+        if (manager->isInputBlocked() || manager->isRewinding()) {
+            return;
+        }
+        
+        PlayerObject::releaseButton(button);
+    }
+    
+    /**
+     * @brief Prevent player updates during rewind
+     */
+    void update(float dt) {
+        auto manager = TimeRewindManager::get();
+        
+        if (manager->isRewinding()) {
+            // Skip physics update during rewind
+            return;
+        }
+        
+        PlayerObject::update(dt);
     }
 };
 
-class $modify(TimeRewindPauseLayer, PauseLayer) {
-    
+// ============================================================
+// PauseLayer Hooks
+// ============================================================
+
+class $modify(TimeRewindPause, PauseLayer) {
+    /**
+     * @brief Handle pause menu opening during rewind
+     */
     void customSetup() {
         PauseLayer::customSetup();
         
         auto manager = TimeRewindManager::get();
-        auto winSize = CCDirector::sharedDirector()->getWinSize();
         
-        std::string infoText = fmt::format(
-            "Rewind Charges: {}/{}",
-            manager->getCharges(),
-            manager->getMaxCharges()
-        );
-        
-        auto rewindLabel = CCLabelBMFont::create(infoText.c_str(), "bigFont.fnt");
-        rewindLabel->setScale(0.4f);
-        rewindLabel->setPosition(ccp(winSize.width / 2, 30));
-        rewindLabel->setColor(ccc3(100, 200, 255));
-        this->addChild(rewindLabel, 100);
+        // If we paused during rewind, cancel it
+        if (manager->isRewinding()) {
+            if (auto playLayer = PlayLayer::get()) {
+                manager->cancelRewind(playLayer);
+                RewindVisuals::get()->hideRewindOverlay(playLayer);
+            }
+        }
     }
 };
 
+// ============================================================
+// EndLevelLayer Hooks
+// ============================================================
+
+class $modify(TimeRewindEndLevel, EndLevelLayer) {
+    /**
+     * @brief Clean up on level end
+     */
+    void customSetup() {
+        EndLevelLayer::customSetup();
+        
+        // Clean up rewind system
+        RewindVisuals::get()->cleanup();
+        TimeRewindManager::get()->reset();
+    }
+};
+
+// ============================================================
+// Mod Lifecycle
+// ============================================================
+
+$execute {
+    log::info("========================================");
+    log::info("   Time Rewind Mod v1.0.0 Loaded!");
+    log::info("========================================");
+}
+
 $on_mod(Loaded) {
-    log::info("Time Rewind Mod loaded!");
-    log::info("Version: {}", Mod::get()->getVersion().toVString());
+    log::info("[TimeRewind] Mod loaded, initializing...");
     
-    auto mod = Mod::get();
+    // Pre-initialize managers
+    TimeRewindManager::get()->loadSettings();
     
-    log::info("Settings - Charges: {}, Duration: {}, Speed: {}", 
-        mod->getSettingValue<int64_t>("rewind-charges"),
-        mod->getSettingValue<double>("rewind-duration"),
-        mod->getSettingValue<double>("rewind-speed")
-    );
+    // Listen for setting changes
+    listenForSettingChanges("enabled", [](bool value) {
+        TimeRewindManager::get()->setEnabled(value);
+        log::info("[TimeRewind] Enabled: {}", value);
+    });
+    
+    listenForSettingChanges("max-charges", [](int64_t value) {
+        TimeRewindManager::get()->setMaxCharges(static_cast<int>(value));
+        log::info("[TimeRewind] Max charges: {}", value);
+    });
+    
+    listenForSettingChanges("rewind-duration", [](double value) {
+        TimeRewindManager::get()->setRewindDuration(static_cast<float>(value));
+        log::info("[TimeRewind] Rewind duration: {:.1f}s", value);
+    });
+    
+    listenForSettingChanges("rewind-speed", [](double value) {
+        TimeRewindManager::get()->setRewindSpeed(static_cast<float>(value));
+        log::info("[TimeRewind] Rewind speed: {:.1f}x", value);
+    });
+    
+    listenForSettingChanges("visual-effects", [](bool value) {
+        TimeRewindManager::get()->setVisualEffects(value);
+        RewindVisuals::get()->setEffectsEnabled(value);
+        log::info("[TimeRewind] Visual effects: {}", value);
+    });
+    
+    listenForSettingChanges("audio-sync", [](bool value) {
+        TimeRewindManager::get()->setAudioSync(value);
+        log::info("[TimeRewind] Audio sync: {}", value);
+    });
+    
+    log::info("[TimeRewind] Initialization complete!");
+}
+
+$on_mod(Unloaded) {
+    log::info("[TimeRewind] Mod unloading, cleaning up...");
+    
+    // Save settings
+    TimeRewindManager::get()->saveSettings();
+    
+    // Clean up
+    RewindVisuals::destroy();
+    TimeRewindManager::destroy();
+    
+    log::info("[TimeRewind] Cleanup complete, goodbye!");
 }
