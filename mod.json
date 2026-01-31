@@ -1,135 +1,57 @@
 {
-    "geode": "4.10.2",
-    "gd": {
-        "win": "2.2074",
-        "android": "2.2074"
-    },
-    "id": "developer.dimension-drift",
-    "name": "Dimension Drift",
-    "version": "v1.0.0",
-    "developer": "Developer",
-    "description": "🌌 Transform GD into a dynamic 2.5D experience! Objects exist on Z-layers (-10 to +10), camera drifts in sync with music, and perspective creates stunning depth. Features multiple camera modes: Classic, Ortho-3D, Drift, Cosmic, Hyper, and Beat-Sync!",
-    "repository": "",
-    "tags": ["gameplay", "enhancement", "interface", "customization"],
-    "dependencies": [],
-    "settings": {
-        "enabled": {
-            "type": "bool",
-            "default": true,
-            "name": "✨ Enable Dimension Drift",
-            "description": "Master toggle for the 2.5D depth effect."
-        },
-        "camera-mode": {
-            "type": "int",
-            "default": 2,
-            "name": "🎬 Camera Mode",
-            "description": "0=Classic 2D, 1=Ortho-3D, 2=Drift, 3=Cosmic, 4=Hyper, 5=Beat Sync",
-            "min": 0,
-            "max": 5
-        },
-        "z-spread": {
-            "type": "float",
-            "default": 1.0,
-            "name": "📊 Z-Layer Spread",
-            "description": "How far objects spread across Z-layers. Higher = more 3D depth.",
-            "min": 0.0,
-            "max": 2.0
-        },
-        "drift-amplitude": {
-            "type": "float",
-            "default": 5.0,
-            "name": "🌊 Drift Amplitude",
-            "description": "How far the camera drifts in Drift modes.",
-            "min": 1.0,
-            "max": 15.0
-        },
-        "drift-frequency": {
-            "type": "float",
-            "default": 0.5,
-            "name": "⚡ Drift Frequency",
-            "description": "Speed of camera drift oscillation (Hz).",
-            "min": 0.1,
-            "max": 3.0
-        },
-        "perspective": {
-            "type": "float",
-            "default": 0.3,
-            "name": "🔭 Perspective Strength",
-            "description": "How strong the 3D perspective effect is.",
-            "min": 0.0,
-            "max": 1.0
-        },
-        "fade-start": {
-            "type": "float",
-            "default": 5.0,
-            "name": "🌫️ Depth Fade Start",
-            "description": "Z-distance where objects start fading.",
-            "min": 1.0,
-            "max": 10.0
-        },
-        "fade-end": {
-            "type": "float",
-            "default": 10.0,
-            "name": "🌫️ Depth Fade End",
-            "description": "Z-distance where objects become invisible.",
-            "min": 5.0,
-            "max": 20.0
-        },
-        "depth-glow": {
-            "type": "bool",
-            "default": true,
-            "name": "💫 Depth Glow",
-            "description": "Objects closer to camera glow."
-        },
-        "glow-intensity": {
-            "type": "float",
-            "default": 0.5,
-            "name": "💡 Glow Intensity",
-            "description": "How bright the depth glow effect is.",
-            "min": 0.0,
-            "max": 1.0
-        },
-        "z-gravity": {
-            "type": "bool",
-            "default": false,
-            "name": "🌍 Z-Affected Gravity",
-            "description": "Objects on different Z-layers have modified gravity. Experimental!"
-        },
-        "z-collisions": {
-            "type": "bool",
-            "default": false,
-            "name": "💥 Z-Layer Collisions",
-            "description": "Only collide with objects on similar Z-layers. Very experimental!"
-        },
-        "collision-tolerance": {
-            "type": "float",
-            "default": 2.0,
-            "name": "📏 Collision Z-Tolerance",
-            "description": "How close in Z objects need to be to collide.",
-            "min": 0.5,
-            "max": 5.0
-        },
-        "auto-seed": {
-            "type": "bool",
-            "default": true,
-            "name": "🎲 Auto-Seed",
-            "description": "Automatically generate seed from level ID for consistent Z-layers."
-        },
-        "manual-seed": {
-            "type": "int",
-            "default": 12345,
-            "name": "🔢 Manual Seed",
-            "description": "Seed for Z-layer randomization (when auto-seed is off).",
-            "min": 0,
-            "max": 999999999
-        },
-        "beat-reactivity": {
-            "type": "float",
-            "default": 1.0,
-            "name": "🎵 Beat Reactivity",
-            "description": "How strongly camera reacts to beats in Beat-Sync mode.",
-            "min": 0.0,
-            "max": 2.0
-        }
-    }
+	"geode": "4.10.2",
+	"gd": {
+		"win": "2.2074",
+		"android": "2.2074"
+	},
+	"id": "yourname.dimension_drift",
+	"version": "1.0.0",
+	"name": "Dimension Drift",
+	"developer": "YourName",
+	"description": "Добавляет эффект псевдо-3D, распределяя объекты уровня по Z-слоям и заставляя камеру дрейфовать.",
+	"settings": {
+		"enabled": {
+			"name": "Включить мод",
+			"type": "bool",
+			"default": true
+		},
+		"camera-mode": {
+			"name": "Режим камеры",
+			"type": "enum",
+			"default": 2,
+			"values": [
+				"Classic 2D",
+				"Ortho 3D",
+				"Drift",
+				"Beat Sync"
+			]
+		},
+		"z-spread": {
+			"name": "Разброс глубины (Z)",
+			"description": "Насколько сильно объекты будут разлетаться по слоям.",
+			"type": "float",
+			"default": 1.0,
+			"min": 0.1,
+			"max": 5.0,
+			"control": "slider"
+		},
+		"drift-amplitude": {
+			"name": "Амплитуда дрейфа",
+			"description": "Сила раскачивания камеры.",
+			"type": "float",
+			"default": 5.0,
+			"min": 0.0,
+			"max": 20.0,
+			"control": "slider"
+		},
+		"drift-frequency": {
+			"name": "Частота дрейфа",
+			"description": "Скорость раскачивания камеры.",
+			"type": "float",
+			"default": 0.5,
+			"min": 0.1,
+			"max": 5.0,
+			"control": "slider"
+		}
+	}
 }
