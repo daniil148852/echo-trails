@@ -16,7 +16,7 @@ add_library(${PROJECT_NAME} SHARED
     src/main.cpp
     src/GroqAPI.cpp
     src/AIAssistant.cpp
-    src/ChatPopup.cpp
+    src/ChatUI.cpp
 )
 
 # ========== GEODE SDK ==========
