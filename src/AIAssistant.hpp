@@ -1,129 +1,55 @@
 #pragma once
 
 #include <Geode/Geode.hpp>
-#include "GroqAPI.hpp"
 #include <map>
 #include <deque>
+#include <string>
 
 using namespace geode::prelude;
 
-/**
- * @brief Death location info for analysis
- */
-struct DeathInfo {
-    float xPosition;
-    float percentage;
-    int attempts;
-    std::string gameMode;  // cube, ship, ball, etc.
-    bool isPlatformer;
-    std::string lastTip;
+struct DeathData {
+    float percentage = 0.0f;
+    int count = 0;
+    std::string gameMode;
 };
 
-/**
- * @brief Conversation history entry
- */
-struct ConversationEntry {
+struct ConvoMessage {
     std::string role;
     std::string content;
-    double timestamp;
 };
 
-/**
- * @brief Main AI Assistant manager
- */
 class AIAssistant {
 private:
     static AIAssistant* s_instance;
     
-    // Death tracking
-    std::map<int, DeathInfo> m_deathLocations;  // Key: rounded X position
+    std::map<int, DeathData> m_deathSpots;
+    std::deque<ConvoMessage> m_history;
+    std::string m_levelName;
     int m_totalDeaths;
+    bool m_inLevel;
     int m_deathThreshold;
-    bool m_autoTipsEnabled;
-    
-    // Current level info
-    std::string m_currentLevelName;
-    int m_currentLevelID;
-    int m_currentDifficulty;
-    float m_currentLevelLength;
-    bool m_isInLevel;
-    
-    // Conversation
-    std::deque<ConversationEntry> m_conversationHistory;
-    size_t m_maxHistorySize;
-    
-    // System prompts
-    std::string m_baseSystemPrompt;
-    std::string m_tipSystemPrompt;
-    std::string m_analysisSystemPrompt;
+    bool m_autoTips;
     
     AIAssistant();
-    ~AIAssistant();
-    
-    std::string buildContextPrompt();
-    std::string getGameModeString(PlayerObject* player);
     
 public:
     static AIAssistant* get();
-    static void destroy();
     
-    // ==================== Level Tracking ====================
-    
-    void onLevelStart(GJGameLevel* level);
+    void onLevelStart(const std::string& levelName);
     void onLevelEnd();
-    void onPlayerDeath(PlayerObject* player, float xPos, float percentage);
-    void onLevelComplete();
-    void onLevelReset();
+    void onDeath(float percentage, const std::string& gameMode);
+    void resetDeaths();
     
-    // ==================== AI Interactions ====================
-    
-    /**
-     * @brief Get a tip for the current death location
-     */
-    void requestDeathTip(std::function<void(const std::string&)> callback);
-    
-    /**
-     * @brief Analyze current gameplay and provide suggestions
-     */
-    void analyzeGameplay(std::function<void(const std::string&)> callback);
-    
-    /**
-     * @brief General chat with the AI
-     */
     void chat(const std::string& message, std::function<void(const std::string&)> callback);
+    void getTip(std::function<void(const std::string&)> callback);
+    void analyze(std::function<void(const std::string&)> callback);
     
-    /**
-     * @brief Get level difficulty prediction
-     */
-    void predictDifficulty(std::function<void(const std::string&)> callback);
-    
-    /**
-     * @brief Get practice mode suggestions
-     */
-    void getPracticeSuggestions(std::function<void(const std::string&)> callback);
-    
-    // ==================== Configuration ====================
-    
-    void setAutoTips(bool enabled) { m_autoTipsEnabled = enabled; }
-    bool getAutoTips() const { return m_autoTipsEnabled; }
-    
-    void setDeathThreshold(int threshold) { m_deathThreshold = threshold; }
-    int getDeathThreshold() const { return m_deathThreshold; }
-    
-    void clearConversation();
-    void clearDeathData();
-    
-    // ==================== Getters ====================
+    void clearHistory();
+    const std::deque<ConvoMessage>& getHistory() const { return m_history; }
     
     int getTotalDeaths() const { return m_totalDeaths; }
-    std::string getCurrentLevelName() const { return m_currentLevelName; }
-    bool isInLevel() const { return m_isInLevel; }
-    
-    const std::deque<ConversationEntry>& getConversationHistory() const {
-        return m_conversationHistory;
-    }
-    
-    // ==================== Settings ====================
+    std::string getLevelName() const { return m_levelName; }
+    bool isInLevel() const { return m_inLevel; }
     
     void loadSettings();
 };
