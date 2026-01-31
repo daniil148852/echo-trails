@@ -4,56 +4,132 @@
         "win": "2.2074",
         "android": "2.2074"
     },
-    "id": "developer.echo-trails",
-    "name": "Echo Trails",
+    "id": "developer.dimension-drift",
+    "name": "Dimension Drift",
     "version": "v1.0.0",
     "developer": "Developer",
-    "description": "👻 Race against your ghost! Records your best run and displays a phantom replay of yourself to compete against. Features smooth interpolation, time difference indicator, and customizable visuals.",
+    "description": "🌌 Transform GD into a dynamic 2.5D experience! Objects exist on Z-layers (-10 to +10), camera drifts in sync with music, and perspective creates stunning depth. Features multiple camera modes: Classic, Ortho-3D, Drift, Cosmic, Hyper, and Beat-Sync!",
     "repository": "",
-    "tags": ["gameplay", "enhancement", "online"],
+    "tags": ["gameplay", "enhancement", "interface", "customization"],
+    "dependencies": [],
     "settings": {
         "enabled": {
             "type": "bool",
             "default": true,
-            "name": "✨ Enable Echo Trails",
-            "description": "Master toggle for ghost recording and playback."
+            "name": "✨ Enable Dimension Drift",
+            "description": "Master toggle for the 2.5D depth effect."
         },
-        "record-fps": {
+        "camera-mode": {
             "type": "int",
-            "default": 60,
-            "name": "📹 Recording FPS",
-            "description": "Frames per second for ghost recording. Higher = smoother playback, larger files.",
-            "min": 15,
-            "max": 240
+            "default": 2,
+            "name": "🎬 Camera Mode",
+            "description": "0=Classic 2D, 1=Ortho-3D, 2=Drift, 3=Cosmic, 4=Hyper, 5=Beat Sync",
+            "min": 0,
+            "max": 5
         },
-        "ghost-opacity": {
+        "z-spread": {
+            "type": "float",
+            "default": 1.0,
+            "name": "📊 Z-Layer Spread",
+            "description": "How far objects spread across Z-layers. Higher = more 3D depth.",
+            "min": 0.0,
+            "max": 2.0
+        },
+        "drift-amplitude": {
+            "type": "float",
+            "default": 5.0,
+            "name": "🌊 Drift Amplitude",
+            "description": "How far the camera drifts in Drift modes.",
+            "min": 1.0,
+            "max": 15.0
+        },
+        "drift-frequency": {
             "type": "float",
             "default": 0.5,
-            "name": "👻 Ghost Opacity",
-            "description": "Transparency of the ghost player (0.0 - 1.0).",
+            "name": "⚡ Drift Frequency",
+            "description": "Speed of camera drift oscillation (Hz).",
             "min": 0.1,
+            "max": 3.0
+        },
+        "perspective": {
+            "type": "float",
+            "default": 0.3,
+            "name": "🔭 Perspective Strength",
+            "description": "How strong the 3D perspective effect is.",
+            "min": 0.0,
             "max": 1.0
         },
-        "ghost-color": {
-            "type": "string",
-            "default": "blue",
-            "name": "🎨 Ghost Color",
-            "description": "Color of the ghost sprite. Options: blue, red, green, purple, yellow, cyan, white"
+        "fade-start": {
+            "type": "float",
+            "default": 5.0,
+            "name": "🌫️ Depth Fade Start",
+            "description": "Z-distance where objects start fading.",
+            "min": 1.0,
+            "max": 10.0
         },
-        "show-time-diff": {
+        "fade-end": {
+            "type": "float",
+            "default": 10.0,
+            "name": "🌫️ Depth Fade End",
+            "description": "Z-distance where objects become invisible.",
+            "min": 5.0,
+            "max": 20.0
+        },
+        "depth-glow": {
             "type": "bool",
             "default": true,
-            "name": "⏱️ Show Time Difference",
-            "description": "Display position difference indicator above ghost."
+            "name": "💫 Depth Glow",
+            "description": "Objects closer to camera glow."
         },
-        "glow-effect": {
+        "glow-intensity": {
+            "type": "float",
+            "default": 0.5,
+            "name": "💡 Glow Intensity",
+            "description": "How bright the depth glow effect is.",
+            "min": 0.0,
+            "max": 1.0
+        },
+        "z-gravity": {
+            "type": "bool",
+            "default": false,
+            "name": "🌍 Z-Affected Gravity",
+            "description": "Objects on different Z-layers have modified gravity. Experimental!"
+        },
+        "z-collisions": {
+            "type": "bool",
+            "default": false,
+            "name": "💥 Z-Layer Collisions",
+            "description": "Only collide with objects on similar Z-layers. Very experimental!"
+        },
+        "collision-tolerance": {
+            "type": "float",
+            "default": 2.0,
+            "name": "📏 Collision Z-Tolerance",
+            "description": "How close in Z objects need to be to collide.",
+            "min": 0.5,
+            "max": 5.0
+        },
+        "auto-seed": {
             "type": "bool",
             "default": true,
-            "name": "✨ Glow Effect",
-            "description": "Add glowing aura around the ghost for better visibility."
+            "name": "🎲 Auto-Seed",
+            "description": "Automatically generate seed from level ID for consistent Z-layers."
+        },
+        "manual-seed": {
+            "type": "int",
+            "default": 12345,
+            "name": "🔢 Manual Seed",
+            "description": "Seed for Z-layer randomization (when auto-seed is off).",
+            "min": 0,
+            "max": 999999999
+        },
+        "beat-reactivity": {
+            "type": "float",
+            "default": 1.0,
+            "name": "🎵 Beat Reactivity",
+            "description": "How strongly camera reacts to beats in Beat-Sync mode.",
+            "min": 0.0,
+            "max": 2.0
         }
-    },
-    "resources": {
-        "spritesheets": {}
     }
 }
