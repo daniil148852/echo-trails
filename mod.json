@@ -4,58 +4,63 @@
         "win": "2.2074",
         "android": "2.2074"
     },
-    "id": "yourname.timerewind",
-    "name": "Time Rewind",
+    "id": "yourname.ai-assistant",
+    "name": "AI Assistant",
     "version": "v1.0.0",
     "developer": "YourName",
-    "description": "Rewind time when you die instead of restarting! Limited charges per attempt.",
-    "tags": ["gameplay", "enhancement", "utility"],
+    "description": "AI-powered assistant for Geometry Dash using Groq API. Get tips, analyze your gameplay, and chat with AI!",
+    "tags": ["interface", "enhancement", "online"],
     "settings": {
-        "enabled": {
-            "name": "Enable Time Rewind",
-            "description": "Toggle the time rewind feature",
+        "api-key": {
+            "name": "Groq API Key",
+            "description": "Your Groq API key (starts with gsk_)",
+            "type": "string",
+            "default": ""
+        },
+        "model": {
+            "name": "AI Model",
+            "description": "Which AI model to use",
+            "type": "string",
+            "default": "llama-3.3-70b-versatile",
+            "one-of": [
+                "llama-3.3-70b-versatile",
+                "llama-3.1-8b-instant",
+                "mixtral-8x7b-32768",
+                "gemma2-9b-it"
+            ]
+        },
+        "auto-tips": {
+            "name": "Auto Tips on Death",
+            "description": "Automatically show AI tips after multiple deaths",
             "type": "bool",
             "default": true
         },
-        "max-charges": {
-            "name": "Max Rewind Charges",
-            "description": "Number of rewinds available per attempt",
+        "death-threshold": {
+            "name": "Deaths Before Tip",
+            "description": "Number of deaths at same spot before showing tip",
             "type": "int",
             "default": 3,
             "min": 1,
             "max": 10
         },
-        "rewind-duration": {
-            "name": "Rewind Duration (seconds)",
-            "description": "How many seconds to rewind",
+        "temperature": {
+            "name": "AI Creativity",
+            "description": "Higher = more creative responses",
             "type": "float",
-            "default": 3.0,
-            "min": 1.0,
-            "max": 10.0
+            "default": 0.7,
+            "min": 0.0,
+            "max": 1.5
         },
-        "rewind-speed": {
-            "name": "Rewind Speed",
-            "description": "Speed multiplier for rewind animation",
-            "type": "float",
-            "default": 2.0,
-            "min": 1.0,
-            "max": 5.0
-        },
-        "visual-effects": {
-            "name": "Visual Effects",
-            "description": "Enable VHS/glitch effects during rewind",
-            "type": "bool",
-            "default": true
-        },
-        "audio-sync": {
-            "name": "Audio Sync",
-            "description": "Sync music position during rewind",
-            "type": "bool",
-            "default": true
+        "max-tokens": {
+            "name": "Max Response Length",
+            "description": "Maximum tokens in AI response",
+            "type": "int",
+            "default": 256,
+            "min": 50,
+            "max": 1024
         }
     },
-    "dependencies": [],
     "resources": {
-        "spritesheets": {}
+        "sprites": ["resources/*.png"]
     }
 }
