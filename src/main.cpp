@@ -21,21 +21,22 @@ class $modify(AIMenuLayer, MenuLayer) {
         menu->setPosition({0, 0});
         this->addChild(menu, 100);
         
-        auto spr = CircleButtonSprite::createWithSpriteFrameName(
+        // Create button sprite with fallback
+        CCNode* btnSprite = nullptr;
+        
+        auto circleSpr = CircleButtonSprite::createWithSpriteFrameName(
             "gj_chatBtn_001.png", 1.0f, 
             CircleBaseColor::Green, CircleBaseSize::Small
         );
         
-        // Fallback if sprite doesn't exist
-        if (!spr) {
-            spr = CircleButtonSprite::createWithSpriteFrameName(
-                "GJ_likeBtn_001.png", 1.0f,
-                CircleBaseColor::Green, CircleBaseSize::Small
-            );
+        if (circleSpr) {
+            btnSprite = circleSpr;
+        } else {
+            btnSprite = ButtonSprite::create("AI", "goldFont.fnt", "GJ_button_01.png", 0.8f);
         }
         
         auto btn = CCMenuItemSpriteExtra::create(
-            spr ? spr : ButtonSprite::create("AI"),
+            btnSprite,
             this,
             menu_selector(AIMenuLayer::onAI)
         );
@@ -140,10 +141,6 @@ class $modify(AIPlayLayer, PlayLayer) {
         AIAssistant::get()->onLevelEnd();
         PlayLayer::onQuit();
     }
-    
-    void resetLevel() {
-        PlayLayer::resetLevel();
-    }
 };
 
 // ============================================================
@@ -153,11 +150,9 @@ class $modify(AIPlayLayer, PlayLayer) {
 $on_mod(Loaded) {
     log::info("[AI Assistant] Mod loaded!");
     
-    // Load settings
     GroqAPI::get()->loadSettings();
     AIAssistant::get()->loadSettings();
     
-    // Listen for settings changes
     listenForSettingChanges("api-key", [](std::string value) {
         GroqAPI::get()->setApiKey(value);
     });
@@ -172,13 +167,5 @@ $on_mod(Loaded) {
     
     listenForSettingChanges("max-tokens", [](int64_t value) {
         GroqAPI::get()->setMaxTokens(static_cast<int>(value));
-    });
-    
-    listenForSettingChanges("auto-tips", [](bool value) {
-        AIAssistant::get()->loadSettings();
-    });
-    
-    listenForSettingChanges("death-threshold", [](int64_t value) {
-        AIAssistant::get()->loadSettings();
     });
 }
