@@ -39,7 +39,7 @@ protected:
     
 public:
     static ChatPopup* create();
-    void show();
+    void show() override;
     
     void refreshHistory();
 };
