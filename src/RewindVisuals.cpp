@@ -23,7 +23,6 @@ void RewindVisuals::startRewindEffect(PlayLayer* playLayer) {
     
     createTintOverlay();
     createVHSEffect();
-    createGhostTrail();
 }
 
 void RewindVisuals::createTintOverlay() {
@@ -34,7 +33,6 @@ void RewindVisuals::createTintOverlay() {
     // Синеватый оттенок экрана
     m_tintLayer = CCLayerColor::create(ccc4(50, 100, 200, 60));
     m_tintLayer->setContentSize(winSize);
-    m_tintLayer->setBlendFunc({GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA});
     m_effectContainer->addChild(m_tintLayer, 1);
     
     // Анимация пульсации
@@ -49,58 +47,47 @@ void RewindVisuals::createVHSEffect() {
     
     auto winSize = CCDirector::sharedDirector()->getWinSize();
     
-    // Создаём полосы VHS-эффекта
+    // Создаём горизонтальные полосы VHS-эффекта
     for (int i = 0; i < 5; i++) {
         auto* line = CCLayerColor::create(ccc4(255, 255, 255, 20));
-        line->setContentSize(CCSizeMake(winSize.width, 2.0f + (rand() % 4)));
+        float height = 2.0f + static_cast<float>(rand() % 4);
+        line->setContentSize(CCSizeMake(winSize.width, height));
         
         float startY = static_cast<float>(rand() % static_cast<int>(winSize.height));
         line->setPosition(ccp(0, startY));
         
         m_effectContainer->addChild(line, 2);
+        m_vhsLines.push_back(line);
         
-        // Анимация движения полосы
-        float speed = 50.0f + (rand() % 100);
-        float direction = (rand() % 2 == 0) ? 1.0f : -1.0f;
-        
-        auto* moveBy = CCMoveBy::create(2.0f, ccp(0, speed * direction));
-        auto* reset = CCCallFunc::create(line, [line, winSize]() {
-            float newY = static_cast<float>(rand() % static_cast<int>(winSize.height));
-            line->setPositionY(newY);
-        });
-        auto* seq = CCSequence::create(moveBy, reset, nullptr);
+        // Анимация движения полосы вниз
+        float duration = 1.0f + static_cast<float>(rand() % 200) / 100.0f;
+        auto* moveDown = CCMoveBy::create(duration, ccp(0, -winSize.height - 50));
+        auto* resetPos = CCMoveTo::create(0.0f, ccp(0, winSize.height + 10));
+        auto* seq = CCSequence::create(moveDown, resetPos, nullptr);
         line->runAction(CCRepeatForever::create(seq));
     }
     
     // Создаём "глитч" полосы
     for (int i = 0; i < 3; i++) {
         auto* glitch = CCLayerColor::create(ccc4(255, 50, 50, 30));
-        glitch->setContentSize(CCSizeMake(winSize.width * 0.3f, 10.0f + (rand() % 20)));
+        float width = winSize.width * (0.2f + static_cast<float>(rand() % 30) / 100.0f);
+        float height = 10.0f + static_cast<float>(rand() % 20);
+        glitch->setContentSize(CCSizeMake(width, height));
         
         float startX = static_cast<float>(rand() % static_cast<int>(winSize.width));
         float startY = static_cast<float>(rand() % static_cast<int>(winSize.height));
         glitch->setPosition(ccp(startX, startY));
         
         m_effectContainer->addChild(glitch, 3);
+        m_glitchBars.push_back(glitch);
         
-        // Хаотичное движение
-        auto* randomMove = CCCallFunc::create(glitch, [glitch, winSize]() {
-            float newX = static_cast<float>(rand() % static_cast<int>(winSize.width));
-            float newY = static_cast<float>(rand() % static_cast<int>(winSize.height));
-            glitch->setPosition(ccp(newX, newY));
-            glitch->setOpacity(static_cast<GLubyte>(10 + rand() % 40));
-            glitch->setScaleX(0.2f + (rand() % 100) / 100.0f);
-        });
-        
-        auto* delay = CCDelayTime::create(0.05f + (rand() % 10) / 100.0f);
-        auto* seq = CCSequence::create(randomMove, delay, nullptr);
+        // Мигание
+        auto* fadeOut = CCFadeTo::create(0.05f, 0);
+        auto* fadeIn = CCFadeTo::create(0.05f, 40);
+        auto* delay = CCDelayTime::create(static_cast<float>(rand() % 100) / 100.0f);
+        auto* seq = CCSequence::create(fadeIn, delay, fadeOut, delay->copy(), nullptr);
         glitch->runAction(CCRepeatForever::create(seq));
     }
-}
-
-void RewindVisuals::createGhostTrail() {
-    // Призрачный след игрока (опционально)
-    m_ghostTrail.clear();
 }
 
 void RewindVisuals::updateEffect(float progress) {
@@ -108,22 +95,15 @@ void RewindVisuals::updateEffect(float progress) {
     
     m_effectTime += 0.016f;
     
-    // Интенсивность эффектов уменьшается к концу
-    float intensity = 1.0f - (progress * 0.5f);
+    // Перемещаем глитч-полосы случайно
+    auto winSize = CCDirector::sharedDirector()->getWinSize();
     
-    if (m_tintLayer) {
-        GLubyte alpha = static_cast<GLubyte>(60 * intensity);
-        // Анимация сама обновляет альфу
-    }
-    
-    // Хроматическая аберрация (сдвиг RGB) — требует шейдера
-    // В базовой версии просто меняем оттенок
-    float colorShift = std::sin(m_effectTime * 10.0f) * 0.3f;
-    if (m_tintLayer) {
-        GLubyte r = static_cast<GLubyte>(50 + colorShift * 50);
-        GLubyte g = static_cast<GLubyte>(100 - colorShift * 30);
-        GLubyte b = static_cast<GLubyte>(200 + colorShift * 20);
-        // m_tintLayer->setColor(ccc3(r, g, b)); // Если нужно
+    for (auto* glitch : m_glitchBars) {
+        if (rand() % 10 == 0) {
+            float newX = static_cast<float>(rand() % static_cast<int>(winSize.width));
+            float newY = static_cast<float>(rand() % static_cast<int>(winSize.height));
+            glitch->setPosition(ccp(newX, newY));
+        }
     }
 }
 
@@ -134,42 +114,42 @@ void RewindVisuals::stopRewindEffect() {
     
     // Плавное затухание
     if (m_effectContainer) {
-        auto* fadeOut = CCFadeOut::create(0.3f);
-        auto* remove = CCRemoveSelf::create();
-        
-        // Применяем к каждому дочернему элементу
-        CCArray* children = m_effectContainer->getChildren();
-        if (children) {
-            CCObject* obj;
-            CCARRAY_FOREACH(children, obj) {
-                auto* node = dynamic_cast<CCNode*>(obj);
-                if (node) {
-                    node->runAction(CCFadeOut::create(0.3f));
-                }
-            }
+        // Останавливаем все экшены и затухаем
+        for (auto* line : m_vhsLines) {
+            line->stopAllActions();
+            line->runAction(CCFadeOut::create(0.2f));
+        }
+        for (auto* glitch : m_glitchBars) {
+            glitch->stopAllActions();
+            glitch->runAction(CCFadeOut::create(0.2f));
+        }
+        if (m_tintLayer) {
+            m_tintLayer->stopAllActions();
+            m_tintLayer->runAction(CCFadeOut::create(0.2f));
         }
         
-        m_effectContainer->runAction(CCSequence::create(
-            CCDelayTime::create(0.3f),
-            CCRemoveSelf::create(),
-            nullptr
-        ));
-        
+        // Удаляем контейнер после затухания
+        auto* delay = CCDelayTime::create(0.3f);
+        auto* remove = CCRemoveSelf::create();
+        m_effectContainer->runAction(CCSequence::create(delay, remove, nullptr));
         m_effectContainer = nullptr;
     }
     
     m_tintLayer = nullptr;
-    m_ghostTrail.clear();
+    m_vhsLines.clear();
+    m_glitchBars.clear();
 }
 
 void RewindVisuals::cleanup() {
     if (m_effectContainer) {
+        m_effectContainer->stopAllActions();
         m_effectContainer->removeFromParent();
         m_effectContainer = nullptr;
     }
     
     m_tintLayer = nullptr;
-    m_ghostTrail.clear();
+    m_vhsLines.clear();
+    m_glitchBars.clear();
     m_active = false;
     m_playLayer = nullptr;
 }
