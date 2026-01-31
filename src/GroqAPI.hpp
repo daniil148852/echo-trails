@@ -3,27 +3,14 @@
 #include <Geode/Geode.hpp>
 #include <Geode/utils/web.hpp>
 #include <functional>
-#include <vector>
 #include <string>
-#include <queue>
-#include <mutex>
 
 using namespace geode::prelude;
-
-struct ChatMessage {
-    std::string role;
-    std::string content;
-    
-    ChatMessage() = default;
-    ChatMessage(const std::string& r, const std::string& c) : role(r), content(c) {}
-};
 
 struct GroqResponse {
     bool success = false;
     std::string content;
     std::string error;
-    int promptTokens = 0;
-    int completionTokens = 0;
 };
 
 using GroqCallback = std::function<void(const GroqResponse&)>;
@@ -42,12 +29,15 @@ private:
     
     GroqAPI();
     
+    // Исправляет ключ (добавляет _ после gsk если GD его убрал)
+    static std::string fixApiKey(const std::string& key);
+    
 public:
     static GroqAPI* get();
     
-    void setApiKey(const std::string& key) { m_apiKey = key; }
+    void setApiKey(const std::string& key);
     std::string getApiKey() const { return m_apiKey; }
-    bool hasApiKey() const { return !m_apiKey.empty() && m_apiKey.length() > 10; }
+    bool hasApiKey() const { return m_apiKey.length() > 20; }
     
     void setModel(const std::string& model) { m_model = model; }
     void setTemperature(float temp) { m_temperature = temp; }
