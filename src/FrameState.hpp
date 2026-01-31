@@ -12,11 +12,9 @@ struct PlayerState {
     float rotation;
     float scale;
     double yVelocity;
-    double xVelocity;
     
     // Флаги состояния
     bool isUpsideDown;
-    bool isHolding;
     bool isOnGround;
     bool isDashing;
     bool isHidden;
@@ -48,26 +46,23 @@ struct FrameState {
     bool hasDualPlayer;
     
     // Камера
-    CCPoint cameraPosition;
+    CCPoint cameraOffset;
     float cameraZoom;
     
     // Игровое состояние
     float levelTime;
     float musicTime;
-    int attempts;
     
     // Захват состояния игрока
-    void capturePlayer(PlayerObject* player, PlayerState& state) {
+    void capturePlayer(PlayerObject* player, PlayerState& state) const {
         if (!player) return;
         
         state.position = player->getPosition();
         state.rotation = player->getRotation();
         state.scale = player->getScale();
         state.yVelocity = player->m_yVelocity;
-        state.xVelocity = player->m_xVelocity;
         
         state.isUpsideDown = player->m_isUpsideDown;
-        state.isHolding = player->m_isHolding;
         state.isOnGround = player->m_isOnGround;
         state.isDashing = player->m_isDashing;
         state.isHidden = player->m_isHidden;
@@ -89,14 +84,13 @@ struct FrameState {
     }
     
     // Применение состояния к игроку
-    void applyToPlayer(PlayerObject* player, const PlayerState& state) {
+    void applyToPlayer(PlayerObject* player, const PlayerState& state) const {
         if (!player) return;
         
         player->setPosition(state.position);
         player->setRotation(state.rotation);
         
         player->m_yVelocity = state.yVelocity;
-        player->m_xVelocity = state.xVelocity;
         player->m_isUpsideDown = state.isUpsideDown;
         player->m_isOnGround = state.isOnGround;
         
