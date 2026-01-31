@@ -55,6 +55,9 @@ bool ChatPopup::setup() {
     
     // Send button
     auto sendSprite = CCSprite::createWithSpriteFrameName("GJ_chatBtn_001.png");
+    if (!sendSprite) {
+        sendSprite = CCSprite::create("GJ_button_01.png");
+    }
     sendSprite->setScale(0.7f);
     m_sendButton = CCMenuItemSpriteExtra::create(
         sendSprite,
@@ -113,18 +116,20 @@ bool ChatPopup::setup() {
     // Loading indicator
     m_loadingIndicator = CCNode::create();
     auto loadingSprite = CCSprite::createWithSpriteFrameName("loadingCircle_001.png");
-    loadingSprite->setScale(0.5f);
-    loadingSprite->runAction(CCRepeatForever::create(CCRotateBy::create(1.0f, 360.0f)));
-    m_loadingIndicator->addChild(loadingSprite);
+    if (loadingSprite) {
+        loadingSprite->setScale(0.5f);
+        loadingSprite->runAction(CCRepeatForever::create(CCRotateBy::create(1.0f, 360.0f)));
+        m_loadingIndicator->addChild(loadingSprite);
+    }
     m_loadingIndicator->setPosition({190.0f, 140.0f});
     m_loadingIndicator->setVisible(false);
     mainContainer->addChild(m_loadingIndicator);
     
     // Check API key
     if (!GroqAPI::get()->hasApiKey()) {
-        addSystemMessage("⚠️ API key not set! Please configure your Groq API key in mod settings.");
+        addSystemMessage("API key not set! Please configure your Groq API key in mod settings.");
     } else {
-        addSystemMessage("👋 Hi! I'm your GD AI assistant. Ask me anything or use the quick actions below!");
+        addSystemMessage("Hi! I'm your GD AI assistant. Ask me anything or use the quick actions below!");
     }
     
     // Refresh with existing conversation
@@ -172,7 +177,7 @@ void ChatPopup::onClear(CCObject* sender) {
     m_chatHeight = 0.0f;
     m_scrollLayer->m_contentLayer->setContentSize({340.0f, 0.0f});
     
-    addSystemMessage("💬 Conversation cleared!");
+    addSystemMessage("Conversation cleared!");
 }
 
 void ChatPopup::onAnalyze(CCObject* sender) {
@@ -277,7 +282,6 @@ void ChatPopup::addMessage(const std::string& content, bool isUser) {
 }
 
 void ChatPopup::addSystemMessage(const std::string& content) {
-    float maxWidth = 320.0f;
     float padding = 8.0f;
     
     auto label = CCLabelBMFont::create(content.c_str(), "chatFont.fnt");
