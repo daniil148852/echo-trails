@@ -30,7 +30,7 @@ class $modify(RewindPlayLayer, PlayLayer) {
             manager->update(dt);
             
             // Обновляем только необходимые визуалы
-            this->updateVisibility();
+            this->updateVisibility(dt);
             return;
         }
         
@@ -95,7 +95,7 @@ class $modify(RewindPlayerObject, PlayerObject) {
 };
 
 // ============================================================================
-// PAUSE LAYER — кнопка отмотки и настройки
+// PAUSE LAYER — кнопка настроек
 // ============================================================================
 
 class $modify(RewindPauseLayer, PauseLayer) {
@@ -110,7 +110,7 @@ class $modify(RewindPauseLayer, PauseLayer) {
         
         // Информация об отмотках
         std::string info = manager->m_infiniteRewinds ?
-            "Rewinds: ∞" :
+            "Rewinds: INF" :
             fmt::format("Rewinds left: {}", manager->m_rewindsRemaining);
         
         auto* infoLabel = CCLabelBMFont::create(info.c_str(), "bigFont.fnt");
@@ -135,12 +135,13 @@ class $modify(RewindPauseLayer, PauseLayer) {
         
         // Подпись
         auto* btnLabel = CCLabelBMFont::create("REWIND", "bigFont.fnt");
-        btnLabel->setPosition(settingsBtn->getContentSize() / 2 + CCSize(0, -20.0f));
-        btnLabel->setScale(0.35f);
+        btnLabel->setPosition(ccp(settingsBtn->getContentSize().width / 2, -15.0f));
+        btnLabel->setScale(0.3f);
         settingsBtn->addChild(btnLabel);
     }
     
     void onRewindSettings(CCObject* sender) {
-        geode::openSettingsPopup(Mod::get());
+        // Открываем настройки мода через Geode API
+        openSettingsPopup(Mod::get());
     }
 };
